@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"git.lan/selever/pkg/fetchver"
-	"git.lan/selever/pkg/install"
+	"github.com/orkward/selever/pkg/fetchver"
+	"github.com/orkward/selever/pkg/install"
 
 	"github.com/spf13/cobra"
 )

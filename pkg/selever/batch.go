@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"git.lan/selever/pkg/install"
-	"git.lan/selever/pkg/shell"
+	"github.com/orkward/selever/pkg/install"
+	"github.com/orkward/selever/pkg/shell"
 
 	"github.com/spf13/cobra"
 )

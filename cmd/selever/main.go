@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"git.lan/selever/pkg/selever"
+	"github.com/orkward/selever/pkg/selever"
 )
 
 func main() {

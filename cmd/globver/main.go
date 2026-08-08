@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"git.lan/selever/pkg/globver"
+	"github.com/orkward/selever/pkg/globver"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"git.lan/selever/pkg/install"
+	"github.com/orkward/selever/pkg/install"
 )
 
 // Config is the global.json configuration.

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"git.lan/selever/pkg/fetchver"
+	"github.com/orkward/selever/pkg/fetchver"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module git.lan/selever
+module github.com/orkward/selever
 
 go 1.26.5
 

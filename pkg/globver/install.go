@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"git.lan/selever/pkg/install"
+	"github.com/orkward/selever/pkg/install"
 
 	"github.com/spf13/cobra"
 )
