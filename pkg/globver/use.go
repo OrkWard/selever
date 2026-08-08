@@ -219,7 +219,7 @@ func listBinDir(dir string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if e.Type().IsRegular() {
+		if e.Type().IsRegular() || e.Type()&os.ModeSymlink != 0 {
 			names = append(names, e.Name())
 		}
 	}
