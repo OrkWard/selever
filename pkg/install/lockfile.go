@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -19,6 +20,10 @@ type Lockfile struct {
 func AcquireLock(path string, timeout time.Duration) (*Lockfile, error) {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
 	}
 
 	deadline := time.Now().Add(timeout)
