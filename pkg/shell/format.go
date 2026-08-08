@@ -52,30 +52,35 @@ func pathSep(shell Name) byte {
 // --- POSIX (sh, bash, zsh) ---
 
 func formatPosixMulti(dirs []string) string {
-	var b strings.Builder
-	for _, d := range dirs {
-		fmt.Fprintf(&b, "export PATH=%q:$PATH\n", d)
+	quoted := make([]string, len(dirs))
+	for i, d := range dirs {
+		quoted[i] = fmt.Sprintf("%q", d)
 	}
-	return b.String()
+	return fmt.Sprintf("export PATH=%s:$PATH\n", strings.Join(quoted, ":"))
 }
 
 // --- Fish ---
 
 func formatFishMulti(dirs []string) string {
-	var b strings.Builder
-	for _, d := range dirs {
-		fmt.Fprintf(&b, "set -gx PATH %q $PATH;\n", d)
+	quoted := make([]string, len(dirs))
+	for i, d := range dirs {
+		quoted[i] = fmt.Sprintf("%q", d)
 	}
-	return b.String()
+	return fmt.Sprintf("set -gx PATH %s $PATH;\n", strings.Join(quoted, " "))
 }
 
 // --- PowerShell ---
 
 func formatPwshMulti(dirs []string) string {
 	var b strings.Builder
-	for _, d := range dirs {
-		fmt.Fprintf(&b, "$env:PATH = %q + \";\" + $env:PATH\n", d)
+	b.WriteString("$env:PATH = ")
+	for i, d := range dirs {
+		if i > 0 {
+			b.WriteString(" + \";\" + ")
+		}
+		fmt.Fprintf(&b, "%q", d)
 	}
+	b.WriteString(" + \";\" + $env:PATH\n")
 	return b.String()
 }
 

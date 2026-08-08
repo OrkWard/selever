@@ -13,7 +13,7 @@ func TestFormatPATH(t *testing.T) {
 		{Sh, "/usr/local/bin", "export PATH=\"/usr/local/bin\":$PATH\n"},
 		{Bash, "/usr/local/bin", "export PATH=\"/usr/local/bin\":$PATH\n"},
 		{Zsh, "/usr/local/bin", "export PATH=\"/usr/local/bin\":$PATH\n"},
-		{Auto, "/usr/local/bin", "export PATH=\"/usr/local/bin\":$PATH\n"}, // Auto → POSIX
+		{Auto, "/usr/local/bin", "export PATH=\"/usr/local/bin\":$PATH\n"},
 		{Fish, "/usr/local/bin", "set -gx PATH \"/usr/local/bin\" $PATH;\n"},
 		{Pwsh, "/usr/local/bin", "$env:PATH = \"/usr/local/bin\" + \";\" + $env:PATH\n"},
 		{Powershell, "/usr/local/bin", "$env:PATH = \"/usr/local/bin\" + \";\" + $env:PATH\n"},
@@ -33,19 +33,19 @@ func TestFormatMultiPATH(t *testing.T) {
 	dirs := []string{"/a", "/b"}
 
 	got := FormatMultiPATH(Sh, dirs)
-	want := "export PATH=\"/a\":$PATH\nexport PATH=\"/b\":$PATH\n"
+	want := "export PATH=\"/a\":\"/b\":$PATH\n"
 	if got != want {
 		t.Errorf("FormatMultiPATH(sh) = %q, want %q", got, want)
 	}
 
 	got = FormatMultiPATH(Fish, dirs)
-	want = "set -gx PATH \"/a\" $PATH;\nset -gx PATH \"/b\" $PATH;\n"
+	want = "set -gx PATH \"/a\" \"/b\" $PATH;\n"
 	if got != want {
 		t.Errorf("FormatMultiPATH(fish) = %q, want %q", got, want)
 	}
 
 	got = FormatMultiPATH(Pwsh, dirs)
-	want = "$env:PATH = \"/a\" + \";\" + $env:PATH\n$env:PATH = \"/b\" + \";\" + $env:PATH\n"
+	want = "$env:PATH = \"/a\" + \";\" + \"/b\" + \";\" + $env:PATH\n"
 	if got != want {
 		t.Errorf("FormatMultiPATH(pwsh) = %q, want %q", got, want)
 	}
