@@ -2,11 +2,11 @@ package install
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"strings"
 )
 
 // GoInstalled checks whether a Go version is already installed.
@@ -42,8 +42,7 @@ func InstallGo(ctx context.Context, version string) (string, error) {
 	url := fmt.Sprintf("https://go.dev/dl/%s", archiveName)
 
 	// Fetch checksum.
-	checksumURL := url + ".sha256"
-	sha256, err := fetchGoChecksum(checksumURL)
+	sha256, err := fetchGoChecksum(version, archiveName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not fetch Go checksum: %v\n", err)
 		sha256 = ""
@@ -58,28 +57,48 @@ func InstallGo(ctx context.Context, version string) (string, error) {
 	return dir, FetchExtract(ctx, url, cacheDir, dir, sha256)
 }
 
-// fetchGoChecksum fetches the .sha256 file (which is just the hex string).
-func fetchGoChecksum(url string) (string, error) {
-	resp, err := http.Get(url)
+// goRelease is a single release from https://go.dev/dl/?mode=json.
+type goRelease struct {
+	Version string `json:"version"`
+	Files   []struct {
+		Filename string `json:"filename"`
+		SHA256   string `json:"sha256"`
+	} `json:"files"`
+}
+
+// fetchGoChecksum fetches the SHA256 for a specific Go archive from the JSON API.
+func fetchGoChecksum(version, archiveName string) (string, error) {
+	resp, err := http.Get("https://go.dev/dl/?mode=json&include=all")
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GET %s: %s", url, resp.Status)
+		return "", fmt.Errorf("go download index returned %s", resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20)) // 2MB limit
 	if err != nil {
 		return "", err
 	}
 
-	// File format: <sha256hex>  <filename> or just <sha256hex>
-	line := strings.TrimSpace(string(body))
-	parts := strings.Fields(line)
-	if len(parts) > 0 && isValidSHA256(parts[0]) {
-		return parts[0], nil
+	var releases []goRelease
+	if err := json.Unmarshal(body, &releases); err != nil {
+		return "", fmt.Errorf("parse go download index: %w", err)
 	}
-	return "", fmt.Errorf("invalid checksum file")
+
+	fullVersion := "go" + version
+	for _, r := range releases {
+		if r.Version != fullVersion {
+			continue
+		}
+		for _, f := range r.Files {
+			if f.Filename == archiveName {
+				return f.SHA256, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("checksum not found for %s in go %s", archiveName, version)
 }
