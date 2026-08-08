@@ -17,8 +17,7 @@ var rootCmd = &cobra.Command{
 	Short: "Install exact toolchains and packages",
 	Long: `selever installs exact Node.js, Go, npm package, and Go package versions
 in immutable directories and prints shell environment updates.`,
-	SilenceUsage:  true,
-	SilenceErrors: true,
+	SilenceUsage: true,
 }
 
 // Execute runs the root command.

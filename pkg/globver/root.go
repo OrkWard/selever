@@ -10,8 +10,7 @@ var rootCmd = &cobra.Command{
 	Long: `globver installs selections through Selever and creates launchers in
 ~/.local/bin. Each launcher uses an executable's native name and
 adds the directories required by its recorded selection to PATH.`,
-	SilenceUsage:  true,
-	SilenceErrors: true,
+	SilenceUsage: true,
 }
 
 // Execute runs the root command.

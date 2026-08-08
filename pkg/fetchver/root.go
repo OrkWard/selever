@@ -9,8 +9,7 @@ var rootCmd = &cobra.Command{
 	Short: "Resolve version queries to exact versions",
 	Long: `fetchver resolves version prefixes, tags, codenames, or package queries
 and writes the matching exact version to standard output.`,
-	SilenceUsage:  true,
-	SilenceErrors: true,
+	SilenceUsage: true,
 }
 
 // Execute runs the root command.
