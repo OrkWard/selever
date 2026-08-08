@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/orkward/selever/pkg/install"
 
@@ -78,11 +79,11 @@ func installSelection(ctx context.Context, sel []string) ([]string, error) {
 	switch tool {
 	case "node":
 		dir, err := install.InstallNode(ctx, sel[1])
-		return []string{dir}, err
+		return []string{filepath.Join(dir, "bin")}, err
 
 	case "go":
 		dir, err := install.InstallGo(ctx, sel[1])
-		return []string{dir}, err
+		return []string{filepath.Join(dir, "bin")}, err
 
 	case "npm":
 		// sel = ["npm", "pkg@ver", "--node", "ver"]

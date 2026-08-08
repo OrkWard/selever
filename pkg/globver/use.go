@@ -93,7 +93,7 @@ func runUseNode(cmd *cobra.Command, args []string) {
 	}
 
 	selector := []string{"node", version}
-	if err := registerAndShim(exes, selector, []string{dir}); err != nil {
+	if err := registerAndShim(exes, selector, []string{filepath.Join(dir, "bin")}); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use node: %v\n", err)
 		os.Exit(1)
 	}
@@ -117,7 +117,7 @@ func runUseGo(cmd *cobra.Command, args []string) {
 	}
 
 	selector := []string{"go", version}
-	if err := registerAndShim(exes, selector, []string{dir}); err != nil {
+	if err := registerAndShim(exes, selector, []string{filepath.Join(dir, "bin")}); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use go: %v\n", err)
 		os.Exit(1)
 	}
