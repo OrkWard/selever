@@ -1,0 +1,281 @@
+.TH GLOBVER 1 "2026-07-30" "Selever" "User Commands"
+.SH NAME
+globver \- expose Selever-managed executables in the user's bin directory
+.SH SYNOPSIS
+.B globver use node
+.I version
+.br
+.B globver use npm
+.I package[@version]
+.RI [ \-\-node= version ]
+.br
+.B globver use go
+.I version
+.br
+.B globver use gopkg
+.I package[@version]
+.RI [ \-\-go= version ]
+.br
+.B globver use dotnet
+.I package[@version]
+.br
+.B globver remove node
+.br
+.B globver remove npm
+.I package
+.br
+.B globver remove go
+.br
+.B globver remove gopkg
+.I package
+.br
+.B globver remove dotnet
+.I package
+.br
+.B globver list
+.br
+.B globver install
+.SH DESCRIPTION
+.B globver
+installs selections through Selever and creates launchers in
+.IR $HOME/.local/bin .
+Each launcher uses an executable's native name, adds the directories required
+by its recorded selection to
+.BR PATH ,
+and runs the installed executable.
+.PP
+The configuration records exact selectors by executable name.
+Launchers contain resolved absolute paths and do not read the configuration
+when they run.
+.B globver
+marks its launchers and refuses to overwrite a file without that marker.
+.SH USE COMMANDS
+.B globver use
+resolves the requested selection, installs it, records every executable it
+owns, and writes the launchers.
+It prints the exact recorded selection and the executable names to standard
+error.
+.TP
+.BI "use node " version
+Expose every executable in a Node.js release.
+.I version
+may be exact,
+.BR latest ,
+a one-, two-, or three-part numeric prefix, or an LTS codename.
+Exact versions are used without metadata resolution.
+.TP
+.BI "use npm " package[@version] " [\-\-node=" version ]
+Expose every executable owned by an npm package.
+The package version may be a numeric prefix or dist-tag and defaults to
+.BR latest .
+The Node.js version may use the same queries as
+.BR "globver use node" .
+.TP
+.BI "use go " version
+Expose every executable in an exact Go release.
+The version must not have a leading
+.BR go .
+.TP
+.BI "use gopkg " package[@version] " [\-\-go=" version ]
+Expose every executable produced by a Go package.
+The package version may be any Go module version query and defaults to
+.BR latest .
+The Go version must be exact.
+.TP
+.BI "use dotnet " package[@version]
+Expose every command provided by a dotnet tool package.
+The version may be
+.B latest
+or a one-, two-, or three-part stable prefix and defaults to
+.BR latest .
+The package is installed, or updated when necessary, by
+.BR "dotnet tool"
+as a global tool.
+.SH PARENT TOOLCHAINS
+npm selections record an exact Node.js version, and Go package selections
+record an exact Go version.
+.PP
+When
+.B \-\-node
+or
+.B \-\-go
+is omitted and standard input and output are terminals,
+.B globver
+opens a searchable list of completed local installations.
+When the streams are not terminals, it uses the recorded global
+.B node
+or
+.B go
+selection.
+The command fails if no suitable local or recorded selection is available.
+.SH REMOVE COMMANDS
+.B globver remove
+deletes every managed launcher owned by the named selection and removes its
+configuration entries.
+The argument identifies a selector, not an executable name.
+.TP
+.B remove node
+Remove the recorded Node.js selection.
+.TP
+.BI "remove npm " package
+Remove the recorded npm package selection.
+.TP
+.B remove go
+Remove the recorded Go selection.
+.TP
+.BI "remove gopkg " package
+Remove the recorded Go package selection.
+.TP
+.BI "remove dotnet " package
+Remove the recorded dotnet tool selection and uninstall the global dotnet tool.
+The package name is matched without regard to case.
+.PP
+Installed Selever data is retained when a Node.js, npm, Go, or Go package
+selection is removed.
+.SH OTHER COMMANDS
+.TP
+.B list
+Write a table of exact recorded selections and their executable names to
+standard output.
+Executables that share a selection are grouped on one row.
+.TP
+.B install
+Install every recorded selection and recreate its managed launchers.
+This command is suitable for restoring the configured commands on another
+machine after copying
+.IR global.json .
+It refuses to replace unmanaged files.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show help.
+.SH CONFIGURATION
+The configuration is a JSON object whose keys are executable names and whose
+values are exact selector argument arrays.
+For example:
+.PP
+.EX
+{
+  "tsc": ["npm", "typescript@5.8.2", "--node", "22.14.0"],
+  "tsserver": ["npm", "typescript@5.8.2", "--node", "22.14.0"]
+}
+.EE
+.PP
+Configuration changes and launcher changes are serialized with an exclusive
+lock.
+The configuration file is replaced atomically.
+.SH OUTPUT
+.B globver use
+writes the resolved selection and sorted executable names to standard error:
+.PP
+.EX
+selection: npm typescript@5.8.2 --node 22.14.0
+executables: tsc, tsserver
+.EE
+.PP
+.B globver list
+writes a table to standard output:
+.PP
+.EX
+SELECTION                                      EXECUTABLES
+npm pnpm@9.15.9 --node 22.23.1                pnpm, pnpx
+npm typescript@5.8.2 --node 22.14.0           tsc, tsserver
+.EE
+.PP
+Installation progress and diagnostics are written to standard error.
+.SH ENVIRONMENT
+.TP
+.B HOME
+Locates
+.IR .local/bin
+and the default configuration, data, and cache directories.
+.TP
+.B XDG_CONFIG_HOME
+Overrides the configuration directory base.
+The default is
+.IR $HOME/.config .
+.TP
+.B XDG_DATA_HOME
+Overrides the Selever data directory base.
+The default is
+.IR $HOME/.local/share .
+.TP
+.B XDG_CACHE_HOME
+Overrides the Selever cache directory base.
+The default is
+.IR $HOME/.cache .
+.TP
+.B DOTNET_CLI_HOME
+Changes the home directory used by dotnet, including the location of its global
+tool executables.
+.TP
+.B GOPROXY
+Controls Go module lookup for Go package selection and installation.
+.TP
+.B HTTP_PROXY, HTTPS_PROXY, NO_PROXY
+Control proxies for version metadata and download requests.
+.TP
+.B PATH
+Used to locate
+.B go
+during Go package resolution and
+.B dotnet
+for dotnet tool operations.
+.SH FILES
+.TP
+.I ${XDG_CONFIG_HOME:\-$HOME/.config}/selever/global.json
+Exact selections indexed by executable name.
+.TP
+.I ${XDG_CONFIG_HOME:\-$HOME/.config}/selever/global.json.lock
+Configuration lock file.
+.TP
+.I $HOME/.local/bin
+Managed executable launchers.
+.TP
+.I ${XDG_DATA_HOME:\-$HOME/.local/share}/selever
+Selever-managed toolchain and package installations.
+.TP
+.I ${XDG_CACHE_HOME:\-$HOME/.cache}/selever
+Downloaded metadata, archives, and package-manager caches.
+.SH EXIT STATUS
+.B globver
+exits with status 0 when the requested configuration and launchers are in
+place, a selection is removed, or the list is written.
+Canceling an interactive parent-toolchain selector also exits with status 0.
+Other errors produce a non-zero status.
+.SH EXAMPLES
+Select the newest stable Node.js 22 release:
+.PP
+.EX
+globver use node 22
+.EE
+.PP
+Expose TypeScript using an explicit Node.js release:
+.PP
+.EX
+globver use npm typescript@latest --node 22.14.0
+.EE
+.PP
+Use the recorded global Go release to build and expose gopls in a
+non-interactive invocation:
+.PP
+.EX
+globver use gopkg golang.org/x/tools/gopls@latest
+.EE
+.PP
+Remove every launcher owned by the TypeScript selection:
+.PP
+.EX
+globver remove npm typescript
+.EE
+.SH NOTES
+Node.js and Go archives are checksum-verified.
+npm retains its native integrity and lifecycle behavior.
+Dotnet packages are managed in the dotnet global tool store; Globver manages
+launchers for their commands.
+.PP
+Supported platforms are macOS and glibc Linux on amd64 and arm64.
+.SH SEE ALSO
+.BR selever (1),
+.BR fetchver (1),
+.BR dotnet-tool (1)

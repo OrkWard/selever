@@ -1,0 +1,170 @@
+.TH FETCHVER 1 "2026-07-30" "Selever" "User Commands"
+.SH NAME
+fetchver \- resolve a version query to an exact version
+.SH SYNOPSIS
+.B fetchver node
+.I version
+.br
+.B fetchver npm
+.I package[@version]
+.br
+.B fetchver gopkg
+.I package[@version]
+.br
+.B fetchver dotnet
+.I package[@version]
+.SH DESCRIPTION
+.B fetchver
+resolves a version prefix, tag, codename, or package query and writes the
+matching exact version to standard output.
+It is intended for commands such as
+.BR selever (1)
+that require exact versions.
+.PP
+The
+.B node
+command prints a version number.
+Package commands print the package name followed by
+.B @
+and the resolved version.
+Resolution selects stable releases unless the underlying Go module query
+explicitly selects another version.
+.SH COMMANDS
+.TP
+.BI "node " version
+Resolve a Node.js release.
+.I version
+may be
+.BR latest ,
+a one-, two-, or three-part numeric prefix, or an LTS codename.
+A leading
+.B v
+is accepted for numeric versions.
+LTS codenames are matched without regard to case.
+.TP
+.BI "npm " package[@version]
+Resolve an npm package from its configured registry.
+The optional version may be a one-, two-, or three-part numeric prefix or a
+dist-tag.
+Omitting it is equivalent to
+.BR @latest .
+.TP
+.BI "gopkg " package[@version]
+Resolve a Go module by running
+.BR "go list \-m \-json" .
+The optional version is a Go module version query.
+Omitting it is equivalent to
+.BR @latest .
+A numeric query is passed to Go with a leading
+.BR v .
+.TP
+.BI "dotnet " package[@version]
+Resolve a dotnet tool package through NuGet.
+The optional version may be
+.B latest
+or a one-, two-, or three-part stable version prefix.
+Omitting it is equivalent to
+.BR @latest .
+Package names are matched without regard to case, and the registry's spelling
+is used in the result.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Show help.
+.SH OUTPUT
+One resolved value is written to standard output followed by a newline.
+.PP
+.EX
+$ fetchver node 22
+22.23.1
+$ fetchver npm typescript@5
+typescript@5.9.3
+$ fetchver gopkg golang.org/x/tools/gopls@0.14
+golang.org/x/tools/gopls@v0.14.2
+.EE
+.SH NPM CONFIGURATION
+The npm resolver reads the user's npm configuration and then
+.I .npmrc
+in the current directory.
+The user configuration path is selected by
+.BR npm_config_userconfig ,
+.BR NPM_CONFIG_USERCONFIG ,
+or
+.I $HOME/.npmrc
+in that order.
+Settings from the current directory override user settings.
+.PP
+The registry is selected from a scoped
+.B @scope:registry
+setting, the
+.B npm_config_registry
+or
+.B NPM_CONFIG_REGISTRY
+environment variable, the
+.B registry
+setting, or
+.I https://registry.npmjs.org
+in that order.
+An
+.B _authToken
+setting for the selected registry is sent as a bearer token.
+Environment variables in npm configuration values are expanded.
+.SH ENVIRONMENT
+.TP
+.B HOME
+Locates the default user npm configuration.
+.TP
+.B npm_config_userconfig, NPM_CONFIG_USERCONFIG
+Select the user npm configuration file.
+.TP
+.B npm_config_registry, NPM_CONFIG_REGISTRY
+Override the default npm registry.
+.TP
+.B GOPROXY
+Controls Go module resolution performed by
+.BR "go list" .
+Other Go environment variables used by that command also apply.
+.TP
+.B HTTP_PROXY, HTTPS_PROXY, NO_PROXY
+Control proxies for Node.js, npm, and NuGet HTTP requests.
+.TP
+.B PATH
+Used to locate
+.B go
+for
+.BR "fetchver gopkg" .
+.SH FILES
+.TP
+.I $HOME/.npmrc
+Default user npm configuration.
+.TP
+.I ./.npmrc
+Project npm configuration.
+.SH EXIT STATUS
+.B fetchver
+exits with status 0 after writing a match.
+It exits non-zero when the query is invalid, no stable release matches, package
+metadata cannot be retrieved, or the Go command fails.
+.SH EXAMPLES
+Resolve the current Node.js release for an LTS line:
+.PP
+.EX
+fetchver node Hydrogen
+.EE
+.PP
+Install the latest matching Node.js 22 release:
+.PP
+.EX
+selever node "$(fetchver node 22)"
+.EE
+.PP
+Resolve an omitted package version:
+.PP
+.EX
+fetchver dotnet dotnet-format
+.EE
+.SH SEE ALSO
+.BR selever (1),
+.BR globver (1),
+.BR go-list (1),
+.BR npmrc (5)

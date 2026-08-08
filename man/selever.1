@@ -1,0 +1,180 @@
+.TH SELEVER 1 "2026-07-30" "Selever" "User Commands"
+.SH NAME
+selever \- install an exact toolchain or package and print its shell environment
+.SH SYNOPSIS
+.B selever
+.RI [ \-\-shell= shell ]
+.B node
+.I version
+.br
+.B selever
+.RI [ \-\-shell= shell ]
+.B npm
+.I package@version
+.BI \-\-node= version
+.br
+.B selever
+.RI [ \-\-shell= shell ]
+.B go
+.I version
+.br
+.B selever
+.RI [ \-\-shell= shell ]
+.B gopkg
+.I package@version
+.BI \-\-go= version
+.br
+.B selever
+.RI [ \-\-shell= shell ]
+.B batch
+.SH DESCRIPTION
+.B selever
+installs the selected toolchain or package in an immutable directory and writes
+the shell code needed to add its executables to
+.BR PATH .
+Progress and diagnostics are written to standard error.
+.PP
+All versions passed to
+.B selever
+must be exact.
+Package installations are identified by both the package version and the parent
+toolchain version.
+Completed installations are reused without network access.
+.SH COMMANDS
+.TP
+.BI "node " version
+Install an exact Node.js release.
+The version must not have a leading
+.BR v .
+.TP
+.BI "npm " package@version " \-\-node=" version
+Install an exact npm package using the specified exact Node.js release.
+.TP
+.BI "go " version
+Install an exact Go release.
+The version must not have a leading
+.BR go .
+.TP
+.BI "gopkg " package@version " \-\-go=" version
+Build and install an exact Go package using the specified exact Go release.
+A leading
+.B v
+on the module version is optional.
+.TP
+.B batch
+Read selectors from standard input and emit one environment update.
+See
+.BR "BATCH INPUT" .
+.SH OPTIONS
+.TP
+.BI \-\-shell= shell
+Select the format written to standard output.
+Accepted values are
+.BR auto ,
+.BR sh ,
+.BR bash ,
+.BR zsh ,
+.BR fish ,
+.BR pwsh ,
+.BR powershell ,
+.BR nu ,
+and
+.BR nushell .
+The default is
+.BR auto ,
+which detects the invoking shell and falls back to
+.BR sh .
+.TP
+.B \-h, \-\-help
+Show help.
+.SH BATCH INPUT
+.B selever batch
+reads one selector per non-empty line.
+Fields are separated by whitespace.
+Processing stops at the first invalid selector or failed installation.
+The final environment update contains the executable directories from every
+successful selection, in input order.
+.PP
+.EX
+selever batch <<'EOF'
+go 1.18
+gopkg --go=1.18 golang.org/x/tools/gopls@0.14.2
+EOF
+.EE
+.SH OUTPUT
+For sh, bash, and zsh,
+.B selever
+writes an
+.B export PATH=
+command.
+For fish it writes a
+.B set \-gx PATH
+command, and for PowerShell it writes an assignment to
+.BR $env:PATH .
+For Nushell it writes a JSON object suitable for
+.BR load-env .
+.SH ENVIRONMENT
+.TP
+.B HOME
+Used to locate default data and cache directories.
+.TP
+.B XDG_DATA_HOME
+Overrides the data directory base.
+The default is
+.BR $HOME/.local/share .
+.TP
+.B XDG_CACHE_HOME
+Overrides the cache directory base.
+The default is
+.BR $HOME/.cache .
+.TP
+.B SHELL
+Used as a fallback when automatic shell detection cannot identify the parent
+process.
+.TP
+.B HTTP_PROXY, HTTPS_PROXY, NO_PROXY
+Control proxies for HTTP metadata and download requests.
+.TP
+.B GOPROXY
+Controls module lookup while installing Go packages.
+.SH FILES
+.TP
+.I ${XDG_DATA_HOME:\-$HOME/.local/share}/selever
+Immutable toolchain and package installations.
+.TP
+.I ${XDG_CACHE_HOME:\-$HOME/.cache}/selever
+Downloaded metadata and archives.
+.SH EXIT STATUS
+.B selever
+exits with status 0 after the selection is installed and the environment update
+is written.
+It exits non-zero if its arguments or batch input are invalid, shell detection
+is overridden with an unsupported value, or an installation fails.
+.SH EXAMPLES
+Install Node.js 22.14.0 and print its environment update:
+.PP
+.EX
+selever node 22.14.0
+.EE
+.PP
+Install TypeScript 5.8.2 using Node.js 22.14.0:
+.PP
+.EX
+selever npm typescript@5.8.2 --node 22.14.0
+.EE
+.PP
+Resolve a non-exact version before installing it:
+.PP
+.EX
+selever node "$(fetchver node 22)"
+.EE
+.SH NOTES
+Node.js and Go archives are checksum-verified.
+npm retains its native integrity and lifecycle behavior.
+Installations are completed in a staging directory and moved into place
+atomically while holding an exclusive lock for the installation identity.
+.PP
+Supported platforms are macOS and glibc Linux on amd64 and arm64.
+.SH SEE ALSO
+.BR fetchver (1),
+.BR globver (1)
