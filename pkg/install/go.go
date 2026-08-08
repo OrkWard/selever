@@ -78,8 +78,8 @@ func fetchGoChecksum(url string) (string, error) {
 	// File format: <sha256hex>  <filename> or just <sha256hex>
 	line := strings.TrimSpace(string(body))
 	parts := strings.Fields(line)
-	if len(parts) > 0 {
+	if len(parts) > 0 && isValidSHA256(parts[0]) {
 		return parts[0], nil
 	}
-	return "", fmt.Errorf("empty checksum file")
+	return "", fmt.Errorf("invalid checksum file")
 }

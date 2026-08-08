@@ -209,6 +209,19 @@ func extractZip(archivePath, dest string) error {
 	return nil
 }
 
+// isValidSHA256 returns true if s is a 64-character lowercase hex string.
+func isValidSHA256(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
 // stripTopDir strips the first path component. e.g. "node-v22.14.0/bin/node" → "bin/node".
 func stripTopDir(p string) string {
 	parts := strings.SplitN(p, string(filepath.Separator), 2)

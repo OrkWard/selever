@@ -75,18 +75,16 @@ func fetchNodeChecksum(url, archiveName string) (string, error) {
 		return "", err
 	}
 
-	prefix := ""
 	for _, line := range strings.Split(string(body), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasSuffix(line, "  "+archiveName) {
-			// Extract sha256 hex.
-			prefix = strings.Fields(line)[0]
-			break
+			hash := strings.Fields(line)[0]
+			if !isValidSHA256(hash) {
+				return "", fmt.Errorf("invalid checksum in SHASUMS256.txt")
+			}
+			return hash, nil
 		}
 	}
 
-	if prefix == "" {
-		return "", fmt.Errorf("checksum not found for %s", archiveName)
-	}
-	return prefix, nil
+	return "", fmt.Errorf("checksum not found for %s", archiveName)
 }
