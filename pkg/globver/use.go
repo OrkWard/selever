@@ -301,11 +301,21 @@ func printUseResult(selector []string, resolvedVersion string, exes []string, ex
 }
 
 func resolveSelector(sel []string, resolved string) []string {
-	// Replace the version field (second element or as appropriate).
 	out := make([]string, len(sel))
 	copy(out, sel)
-	if len(out) >= 2 {
+	if len(out) < 2 {
+		return out
+	}
+
+	switch sel[0] {
+	case "node", "go":
+		// sel[1] is the version directly.
 		out[1] = resolved
+	case "npm", "gopkg":
+		// sel[1] is "pkg@query" — replace only the version part.
+		if i := strings.LastIndex(out[1], "@"); i >= 0 {
+			out[1] = out[1][:i+1] + resolved
+		}
 	}
 	return out
 }
