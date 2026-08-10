@@ -18,11 +18,11 @@ func init() {
 
 var goCmd = &cobra.Command{
 	Use:   "go <version>",
-	Short: "Resolve a Go version query",
+	Short: "Resolve the latest Go release",
 	Long: `Resolve a Go release version.
 
-<version> may be "latest", a 1/2/3-part numeric prefix, or an exact version.
-A leading "go" is accepted.`,
+<version> must be "latest" to resolve the latest stable Go release.
+Go versions are irregular (1-, 2-, or 3-part); use exact versions directly.`,
 	Args: cobra.ExactArgs(1),
 	Run:  runFetchGo,
 }
@@ -50,7 +50,6 @@ func resolveGo(query string) (string, error) {
 	}
 
 	query = strings.ToLower(query)
-	fullQuery := "go" + query
 
 	if query == "latest" {
 		for _, r := range releases {
@@ -61,28 +60,7 @@ func resolveGo(query string) (string, error) {
 		return "", fmt.Errorf("no stable Go release found")
 	}
 
-	// Prefix match: prefer the latest stable release.
-	var best string
-	for _, r := range releases {
-		if !strings.HasPrefix(r.Version, fullQuery) || !r.Stable {
-			continue
-		}
-		// Rest must be empty (exact match) or start with '.' (segment boundary).
-		rest := strings.TrimPrefix(r.Version, fullQuery)
-		if rest != "" && rest[0] != '.' {
-			continue
-		}
-		v := strings.TrimPrefix(r.Version, "go")
-		if best == "" || versionCmp(v, best) > 0 {
-			best = v
-		}
-	}
-
-	if best != "" {
-		return best, nil
-	}
-
-	return "", fmt.Errorf("no matching Go release for %q", query)
+	return "", fmt.Errorf("Go releases require an exact version; use %q to resolve the latest stable release", "latest")
 }
 
 func fetchGoReleases() ([]goRelease, error) {

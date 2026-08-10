@@ -1,10 +1,13 @@
 package globver
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/orkward/selever/pkg/fetchver"
@@ -133,17 +136,10 @@ func runUseNpm(cmd *cobra.Command, args []string) {
 		useNpmNode = resolveParentNode()
 	}
 
-	pkgVersion := query
-	exact := false
-	if isExactVersion(query) {
-		exact = true
-	} else {
-		var err error
-		pkgVersion, err = fetchver.ResolveNpmVersion(pkg, query)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "globver use npm: %v\n", err)
-			os.Exit(1)
-		}
+	pkgVersion, err := fetchver.ResolveNpmVersion(pkg, query)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "globver use npm: %v\n", err)
+		os.Exit(1)
 	}
 
 	_, binDir, err := install.InstallNpm(context.Background(), pkg, pkgVersion, useNpmNode)
@@ -164,7 +160,7 @@ func runUseNpm(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	printUseResult(selector, pkgVersion, exes, exact)
+	printUseResult(selector, pkgVersion, exes, false)
 }
 
 func runUseGopkg(cmd *cobra.Command, args []string) {
@@ -175,17 +171,10 @@ func runUseGopkg(cmd *cobra.Command, args []string) {
 		useGopkgGo = resolveParentGo()
 	}
 
-	pkgVersion := query
-	exact := false
-	if isExactVersion(query) {
-		exact = true
-	} else {
-		var err error
-		pkgVersion, err = fetchver.ResolveGopkgVersion(pkg, query)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "globver use gopkg: %v\n", err)
-			os.Exit(1)
-		}
+	pkgVersion, err := fetchver.ResolveGopkgVersion(pkg, query)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "globver use gopkg: %v\n", err)
+		os.Exit(1)
 	}
 
 	_, binDir, err := install.InstallGopkg(context.Background(), pkg, pkgVersion, useGopkgGo)
@@ -206,7 +195,7 @@ func runUseGopkg(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	printUseResult(selector, pkgVersion, exes, exact)
+	printUseResult(selector, pkgVersion, exes, false)
 }
 
 // --- helpers ---
@@ -255,28 +244,48 @@ func registerAndShim(exes []string, selector []string, binDirs []string) error {
 	return SaveConfig(cfg)
 }
 
-// resolveParentNode returns the recorded global Node.js version.
+// resolveParentNode returns a Node.js version from interactive selection (when
+// stdin is a terminal and local installations exist), or from the recorded
+// global selection, or exits with an error.
 func resolveParentNode() string {
+	// If on a terminal, try interactive selection from installed versions first.
+	if isTerminal(os.Stdin) {
+		versions := listInstalledVersions("node")
+		if len(versions) > 0 {
+			return promptSelectVersion("Node.js", versions)
+		}
+	}
+
+	// Fall back to recorded global selection.
 	cfg, _ := LoadConfig()
 	for _, sel := range cfg {
 		if len(sel) >= 2 && sel[0] == "node" {
 			return sel[1]
 		}
 	}
-	fmt.Fprintln(os.Stderr, "globver: no recorded Node.js selection; use --node")
+	fmt.Fprintln(os.Stderr, "globver: no local or recorded Node.js selection; use --node")
 	os.Exit(1)
 	return ""
 }
 
-// resolveParentGo returns the recorded global Go version.
+// resolveParentGo returns a Go version from interactive selection (when stdin
+// is a terminal and local installations exist), or from the recorded global
+// selection, or exits with an error.
 func resolveParentGo() string {
+	if isTerminal(os.Stdin) {
+		versions := listInstalledVersions("go")
+		if len(versions) > 0 {
+			return promptSelectVersion("Go", versions)
+		}
+	}
+
 	cfg, _ := LoadConfig()
 	for _, sel := range cfg {
 		if len(sel) >= 2 && sel[0] == "go" {
 			return sel[1]
 		}
 	}
-	fmt.Fprintln(os.Stderr, "globver: no recorded Go selection; use --go")
+	fmt.Fprintln(os.Stderr, "globver: no local or recorded Go selection; use --go")
 	os.Exit(1)
 	return ""
 }
@@ -343,4 +352,92 @@ func slicesEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// isTerminal reports whether f refers to a terminal.
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
+// listInstalledVersions returns locally installed versions of a tool,
+// sorted newest first.
+func listInstalledVersions(tool string) []string {
+	p, err := install.ResolvePaths()
+	if err != nil {
+		return nil
+	}
+	toolDir := filepath.Join(p.Data, tool)
+	entries, err := os.ReadDir(toolDir)
+	if err != nil {
+		return nil
+	}
+
+	var versions []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		binDir := filepath.Join(toolDir, e.Name(), "bin")
+		if info, err := os.Stat(binDir); err == nil && info.IsDir() {
+			versions = append(versions, e.Name())
+		}
+	}
+
+	sort.Slice(versions, func(i, j int) bool {
+		return compareVersions(versions[i], versions[j]) > 0
+	})
+
+	return versions
+}
+
+// compareVersions compares two dotted version strings.
+// Returns negative if a < b, 0 if equal, positive if a > b.
+func compareVersions(a, b string) int {
+	pa := strings.Split(a, ".")
+	pb := strings.Split(b, ".")
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		var na, nb int
+		if i < len(pa) {
+			na, _ = strconv.Atoi(pa[i])
+		}
+		if i < len(pb) {
+			nb, _ = strconv.Atoi(pb[i])
+		}
+		if na != nb {
+			return na - nb
+		}
+	}
+	return 0
+}
+
+// promptSelectVersion prints a numbered list and reads the user's choice
+// from stdin. It re-prompts on invalid input.
+func promptSelectVersion(tool string, versions []string) string {
+	fmt.Fprintf(os.Stderr, "Available %s versions:\n", tool)
+	for i, v := range versions {
+		fmt.Fprintf(os.Stderr, "  [%d] %s\n", i+1, v)
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Fprintf(os.Stderr, "Choose a version [1-%d]: ", len(versions))
+		if !scanner.Scan() {
+			fmt.Fprintln(os.Stderr)
+			os.Exit(1)
+		}
+		input := strings.TrimSpace(scanner.Text())
+		if input == "" {
+			continue
+		}
+		n, err := strconv.Atoi(input)
+		if err != nil || n < 1 || n > len(versions) {
+			fmt.Fprintf(os.Stderr, "Invalid selection: %s\n", input)
+			continue
+		}
+		return versions[n-1]
+	}
 }

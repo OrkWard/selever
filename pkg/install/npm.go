@@ -8,14 +8,13 @@ import (
 	"path/filepath"
 )
 
-// NpmInstalled checks whether an npm package is already installed for a
-// specific package version + node version combination.
-func NpmInstalled(pkg, pkgVersion, nodeVersion string) (string, bool) {
+// NpmInstalled checks whether an npm package is already installed.
+func NpmInstalled(pkg, pkgVersion string) (string, bool) {
 	p, err := ResolvePaths()
 	if err != nil {
 		return "", false
 	}
-	dir := npmInstallDir(p, pkg, pkgVersion, nodeVersion)
+	dir := npmInstallDir(p, pkg, pkgVersion)
 	if _, err := os.Stat(dir); err == nil {
 		return dir, true
 	}
@@ -36,7 +35,7 @@ func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (insta
 		return "", "", fmt.Errorf("node: %w", err)
 	}
 
-	installDir = npmInstallDir(p, pkg, pkgVersion, nodeVersion)
+	installDir = npmInstallDir(p, pkg, pkgVersion)
 	binDir = filepath.Join(installDir, "node_modules", ".bin")
 
 	if _, err := os.Stat(binDir); err == nil {
@@ -88,9 +87,10 @@ func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (insta
 	return installDir, binDir, nil
 }
 
-// npmInstallDir builds a unique install path for an npm package.
-func npmInstallDir(p *Paths, pkg, pkgVersion, nodeVersion string) string {
-	ident := fmt.Sprintf("%s-%s--node_%s", pkg, pkgVersion, nodeVersion)
+// npmInstallDir builds the install path for an npm package.
+// Scoped packages (e.g. @angular/cli) use their native directory structure.
+func npmInstallDir(p *Paths, pkg, pkgVersion string) string {
+	ident := fmt.Sprintf("%s-%s", pkg, pkgVersion)
 	return filepath.Join(p.Data, "npm", ident)
 }
 

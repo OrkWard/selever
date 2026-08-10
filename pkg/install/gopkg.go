@@ -9,14 +9,13 @@ import (
 	"strings"
 )
 
-// GopkgInstalled checks whether a Go package is already installed for a
-// specific package version + Go version combination.
-func GopkgInstalled(pkg, pkgVersion, goVersion string) (string, bool) {
+// GopkgInstalled checks whether a Go package is already installed.
+func GopkgInstalled(pkg, pkgVersion string) (string, bool) {
 	p, err := ResolvePaths()
 	if err != nil {
 		return "", false
 	}
-	dir := gopkgInstallDir(p, pkg, pkgVersion, goVersion)
+	dir := gopkgInstallDir(p, pkg, pkgVersion)
 	if _, err := os.Stat(dir); err == nil {
 		return dir, true
 	}
@@ -37,7 +36,7 @@ func InstallGopkg(ctx context.Context, pkg, pkgVersion, goVersion string) (insta
 		return "", "", fmt.Errorf("go: %w", err)
 	}
 
-	installDir = gopkgInstallDir(p, pkg, pkgVersion, goVersion)
+	installDir = gopkgInstallDir(p, pkg, pkgVersion)
 	binDir = filepath.Join(installDir, "bin")
 
 	if _, err := os.Stat(binDir); err == nil {
@@ -79,10 +78,9 @@ func InstallGopkg(ctx context.Context, pkg, pkgVersion, goVersion string) (insta
 	return installDir, binDir, nil
 }
 
-// gopkgInstallDir builds a unique install path for a Go package.
-func gopkgInstallDir(p *Paths, pkg, pkgVersion, goVersion string) string {
-	// Strip leading "v" if present for directory naming.
+// gopkgInstallDir builds the install path for a Go package.
+func gopkgInstallDir(p *Paths, pkg, pkgVersion string) string {
 	sanitized := strings.TrimPrefix(pkgVersion, "v")
-	ident := fmt.Sprintf("%s-%s--go_%s", pkg, sanitized, goVersion)
+	ident := fmt.Sprintf("%s-%s", pkg, sanitized)
 	return filepath.Join(p.Data, "gopkg", ident)
 }
