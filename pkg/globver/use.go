@@ -51,8 +51,8 @@ var (
 		Run:   runUseGopkg,
 	}
 
-	useNpmNode   string
-	useGopkgGo   string
+	useNpmNode string
+	useGopkgGo string
 )
 
 func init() {
@@ -154,7 +154,8 @@ func runUseNpm(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	selector := []string{"npm", spec, "--node", useNpmNode}
+	// Record the resolved version, not the raw query (e.g. @latest).
+	selector := []string{"npm", pkg + "@" + pkgVersion, "--node", useNpmNode}
 	if err := registerAndShim(exes, selector, []string{binDir}); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use npm: %v\n", err)
 		os.Exit(1)
@@ -189,7 +190,8 @@ func runUseGopkg(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	selector := []string{"gopkg", spec, "--go", useGopkgGo}
+	// Record the resolved version, not the raw query (e.g. @latest).
+	selector := []string{"gopkg", pkg + "@" + pkgVersion, "--go", useGopkgGo}
 	if err := registerAndShim(exes, selector, []string{binDir}); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use gopkg: %v\n", err)
 		os.Exit(1)
@@ -337,7 +339,8 @@ func allNumeric(parts []string) bool {
 }
 
 func splitSpec(spec string) (pkg, version string) {
-	if i := strings.LastIndex(spec, "@"); i >= 0 {
+	// Skip a leading "@" that starts a scope (e.g. @scope/pkg has no version).
+	if i := strings.LastIndex(spec, "@"); i > 0 {
 		return spec[:i], spec[i+1:]
 	}
 	return spec, "latest"
