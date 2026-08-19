@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -235,7 +236,7 @@ func registerAndShim(exes []string, selector []string, binDirs []string) error {
 
 	// Remove config entries for executables no longer present.
 	for exe, sel := range cfg {
-		if slicesEqual(sel, selector) && !contains(exes, exe) {
+		if slicesEqual(sel, selector) && slices.Contains(exes, exe) {
 			if err := RemoveShim(exe); err != nil {
 				return err
 			}
@@ -344,15 +345,6 @@ func splitSpec(spec string) (pkg, version string) {
 		return spec[:i], spec[i+1:]
 	}
 	return spec, "latest"
-}
-
-func contains(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }
 
 func slicesEqual(a, b []string) bool {

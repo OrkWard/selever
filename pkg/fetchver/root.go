@@ -1,6 +1,7 @@
 package fetchver
 
 import (
+	"github.com/orkward/selever/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -10,6 +11,7 @@ var rootCmd = &cobra.Command{
 	Long: `fetchver resolves version prefixes, tags, codenames, or package queries
 and writes the matching exact version to standard output.`,
 	SilenceUsage: true,
+	Version:      config.Version,
 }
 
 // Execute runs the root command.

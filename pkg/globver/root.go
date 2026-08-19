@@ -1,6 +1,7 @@
 package globver
 
 import (
+	"github.com/orkward/selever/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -11,6 +12,7 @@ var rootCmd = &cobra.Command{
 ~/.local/bin. Each launcher uses an executable's native name and
 adds the directories required by its recorded selection to PATH.`,
 	SilenceUsage: true,
+	Version:      config.Version,
 }
 
 // Execute runs the root command.

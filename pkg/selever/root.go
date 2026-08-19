@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/orkward/selever/pkg/config"
 	"github.com/orkward/selever/pkg/shell"
 
 	"github.com/spf13/cobra"
@@ -18,6 +19,7 @@ var rootCmd = &cobra.Command{
 	Long: `selever installs exact Node.js, Go, npm package, and Go package versions
 in immutable directories and prints shell environment updates.`,
 	SilenceUsage: true,
+	Version:      config.Version,
 }
 
 // Execute runs the root command.
