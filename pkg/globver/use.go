@@ -236,7 +236,7 @@ func registerAndShim(exes []string, selector []string, binDirs []string) error {
 
 	// Remove config entries for executables no longer present.
 	for exe, sel := range cfg {
-		if slicesEqual(sel, selector) && slices.Contains(exes, exe) {
+		if slicesEqual(sel, selector) && !slices.Contains(exes, exe) {
 			if err := RemoveShim(exe); err != nil {
 				return err
 			}
