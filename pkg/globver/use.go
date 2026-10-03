@@ -97,7 +97,7 @@ func runUseNode(cmd *cobra.Command, args []string) {
 	}
 
 	selector := []string{"node", version}
-	if err := registerAndShim(exes, selector, []string{filepath.Join(dir, "bin")}); err != nil {
+	if err := registerAndShim(exes, selector, toolchainSpec(filepath.Join(dir, "bin"))); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use node: %v\n", err)
 		os.Exit(1)
 	}
@@ -121,7 +121,7 @@ func runUseGo(cmd *cobra.Command, args []string) {
 	}
 
 	selector := []string{"go", version}
-	if err := registerAndShim(exes, selector, []string{filepath.Join(dir, "bin")}); err != nil {
+	if err := registerAndShim(exes, selector, toolchainSpec(filepath.Join(dir, "bin"))); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use go: %v\n", err)
 		os.Exit(1)
 	}
@@ -157,7 +157,7 @@ func runUseNpm(cmd *cobra.Command, args []string) {
 
 	// Record the resolved version, not the raw query (e.g. @latest).
 	selector := []string{"npm", pkg + "@" + pkgVersion, "--node", useNpmNode}
-	if err := registerAndShim(exes, selector, []string{binDir}); err != nil {
+	if err := registerAndShim(exes, selector, npmSpec(binDir, useNpmNode)); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use npm: %v\n", err)
 		os.Exit(1)
 	}
@@ -193,7 +193,7 @@ func runUseGopkg(cmd *cobra.Command, args []string) {
 
 	// Record the resolved version, not the raw query (e.g. @latest).
 	selector := []string{"gopkg", pkg + "@" + pkgVersion, "--go", useGopkgGo}
-	if err := registerAndShim(exes, selector, []string{binDir}); err != nil {
+	if err := registerAndShim(exes, selector, toolchainSpec(binDir)); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use gopkg: %v\n", err)
 		os.Exit(1)
 	}
@@ -220,15 +220,38 @@ func listBinDir(dir string) ([]string, error) {
 	return names, nil
 }
 
+// specFunc builds the launcher spec for a single executable.
+type specFunc func(exe string) ShimSpec
+
+// toolchainSpec exposes binDir on PATH and resolves the executable there.
+// Go binaries and the toolchains themselves need no interpreter pinning.
+func toolchainSpec(binDir string) specFunc {
+	return func(string) ShimSpec {
+		return ShimSpec{PathDirs: []string{binDir}}
+	}
+}
+
+// npmSpec pins Node scripts to nodeVersion's interpreter without placing it
+// on PATH. See NpmShimSpec.
+func npmSpec(binDir, nodeVersion string) specFunc {
+	var nodeBinDir string
+	if p, err := install.ResolvePaths(); err == nil {
+		nodeBinDir = p.BinDir("node", nodeVersion)
+	}
+	return func(exe string) ShimSpec {
+		return NpmShimSpec(exe, binDir, nodeBinDir)
+	}
+}
+
 // registerAndShim updates the config and creates shims for executables.
-func registerAndShim(exes []string, selector []string, binDirs []string) error {
+func registerAndShim(exes []string, selector []string, spec specFunc) error {
 	cfg, err := LoadConfig()
 	if err != nil {
 		return err
 	}
 
 	for _, exe := range exes {
-		if err := CreateShim(exe, binDirs); err != nil {
+		if err := CreateShim(exe, spec(exe)); err != nil {
 			return err
 		}
 		cfg[exe] = selector

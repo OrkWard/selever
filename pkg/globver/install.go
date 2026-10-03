@@ -52,14 +52,14 @@ func runInstall(cmd *cobra.Command, args []string) {
 
 	ctx := context.Background()
 	for _, j := range seen {
-		binDirs, err := installSelection(ctx, j.selector)
+		spec, err := installSelection(ctx, j.selector)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "globver install: %v\n", err)
 			os.Exit(1)
 		}
 
 		for _, exe := range j.exes {
-			if err := CreateShim(exe, binDirs); err != nil {
+			if err := CreateShim(exe, spec(exe)); err != nil {
 				fmt.Fprintf(os.Stderr, "globver install: %v\n", err)
 				os.Exit(1)
 			}
@@ -67,9 +67,9 @@ func runInstall(cmd *cobra.Command, args []string) {
 	}
 }
 
-// installSelection installs a recorded selection and returns the bin directories
-// to add to PATH.
-func installSelection(ctx context.Context, sel []string) ([]string, error) {
+// installSelection installs a recorded selection and returns a builder for
+// its launcher specs.
+func installSelection(ctx context.Context, sel []string) (specFunc, error) {
 	if len(sel) < 2 {
 		return nil, fmt.Errorf("invalid selector: %v", sel)
 	}
@@ -79,11 +79,11 @@ func installSelection(ctx context.Context, sel []string) ([]string, error) {
 	switch tool {
 	case "node":
 		dir, err := install.InstallNode(ctx, sel[1])
-		return []string{filepath.Join(dir, "bin")}, err
+		return toolchainSpec(filepath.Join(dir, "bin")), err
 
 	case "go":
 		dir, err := install.InstallGo(ctx, sel[1])
-		return []string{filepath.Join(dir, "bin")}, err
+		return toolchainSpec(filepath.Join(dir, "bin")), err
 
 	case "npm":
 		// sel = ["npm", "pkg@ver", "--node", "ver"]
@@ -96,7 +96,10 @@ func installSelection(ctx context.Context, sel []string) ([]string, error) {
 		}
 		pkg, ver := splitSpec(spec)
 		_, binDir, err := install.InstallNpm(ctx, pkg, ver, nodeVersion)
-		return []string{binDir}, err
+		if err != nil {
+			return nil, err
+		}
+		return npmSpec(binDir, nodeVersion), nil
 
 	case "gopkg":
 		spec := sel[1]
@@ -108,7 +111,7 @@ func installSelection(ctx context.Context, sel []string) ([]string, error) {
 		}
 		pkg, ver := splitSpec(spec)
 		_, binDir, err := install.InstallGopkg(ctx, pkg, ver, goVersion)
-		return []string{binDir}, err
+		return toolchainSpec(binDir), err
 
 	default:
 		return nil, fmt.Errorf("unknown tool %q", tool)

@@ -19,10 +19,24 @@ func binDir() (string, error) {
 	return filepath.Join(home, ".local", "bin"), nil
 }
 
-// CreateShim writes a launcher script for exeName that prepends dirs to PATH
-// and execs the target binary. Returns an error if an unmanaged file already
-// exists at the target path.
-func CreateShim(exeName string, dirs []string) error {
+// ShimSpec describes how a launcher should invoke its target.
+//
+// PathDirs are prepended to PATH and therefore inherited by every child
+// process. A pinned language runtime must never go here: a tool such as
+// `pnpm run build` would then leak that runtime into the project's own
+// scripts, which must keep resolving whatever node the environment provides.
+// Instead, Interp names the interpreter to exec directly, so only the tool
+// itself is pinned.
+type ShimSpec struct {
+	PathDirs   []string // dirs prepended to PATH (inherited by children)
+	Interp     string   // absolute interpreter path; empty means PATH lookup
+	InterpArgs []string // interpreter flags taken from the script's shebang
+	Script     string   // absolute script path, passed to the interpreter
+}
+
+// CreateShim writes a launcher script for exeName. Returns an error if an
+// unmanaged file already exists at the target path.
+func CreateShim(exeName string, spec ShimSpec) error {
 	bin, err := binDir()
 	if err != nil {
 		return err
@@ -40,8 +54,7 @@ func CreateShim(exeName string, dirs []string) error {
 		}
 	}
 
-	script := buildShim(exeName, dirs)
-	return os.WriteFile(target, script, 0o755)
+	return os.WriteFile(target, buildShim(exeName, spec), 0o755)
 }
 
 // RemoveShim deletes a managed launcher script. Returns an error if the
@@ -80,15 +93,29 @@ func IsShim(path string) bool {
 }
 
 // buildShim constructs a POSIX sh launcher script.
-func buildShim(exeName string, dirs []string) []byte {
+func buildShim(exeName string, spec ShimSpec) []byte {
 	var b bytes.Buffer
 	b.WriteString("#!/bin/sh\n")
 	b.WriteString(shimMarker + "\n")
-	for _, d := range dirs {
-		fmt.Fprintf(&b, "PATH=%s:$PATH\n", d)
+	for _, d := range spec.PathDirs {
+		fmt.Fprintf(&b, "PATH='%s':$PATH\n", d)
 	}
-	b.WriteString("export PATH\n")
-	fmt.Fprintf(&b, "exec %q \"$@\"\n", exeName)
+	if len(spec.PathDirs) > 0 {
+		b.WriteString("export PATH\n")
+	}
+
+	// Single-quoted so paths with spaces work; a literal ' is unsupported.
+	b.WriteString("exec ")
+	if spec.Interp != "" && spec.Script != "" {
+		fmt.Fprintf(&b, "'%s'", spec.Interp)
+		for _, a := range spec.InterpArgs {
+			fmt.Fprintf(&b, " '%s'", a)
+		}
+		fmt.Fprintf(&b, " '%s'", spec.Script)
+	} else {
+		fmt.Fprintf(&b, "'%s'", exeName)
+	}
+	b.WriteString(" \"$@\"\n")
 	return b.Bytes()
 }
 
