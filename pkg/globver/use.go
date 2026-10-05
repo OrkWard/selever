@@ -152,7 +152,8 @@ func runUseNpm(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	exes, err := listBinDir(binDir)
+	// Expose only the package's own executables, not its dependencies'.
+	exes, err := npmPackageExes(binDir, pkg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "globver use npm: %v\n", err)
 		os.Exit(1)

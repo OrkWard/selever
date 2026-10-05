@@ -2,9 +2,11 @@ package globver
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/orkward/selever/pkg/install"
@@ -94,30 +96,72 @@ func npmPackageDirs(modules string) []string {
 // packageBin returns the script path, relative to pkgDir, that the package
 // declares for executable exe.
 func packageBin(pkgDir, exe string) (string, bool) {
-	data, err := os.ReadFile(filepath.Join(pkgDir, "package.json"))
+	bins, err := packageBins(pkgDir)
 	if err != nil {
 		return "", false
+	}
+	rel, ok := bins[exe]
+	return rel, ok
+}
+
+// packageBins returns the executables a package declares in the "bin" field
+// of its package.json, mapped to script paths relative to pkgDir.
+func packageBins(pkgDir string) (map[string]string, error) {
+	path := filepath.Join(pkgDir, "package.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
 	}
 	var pkg struct {
 		Name string          `json:"name"`
 		Bin  json.RawMessage `json:"bin"`
 	}
-	if json.Unmarshal(data, &pkg) != nil || len(pkg.Bin) == 0 {
-		return "", false
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+
+	bins := map[string]string{}
+	if len(pkg.Bin) == 0 {
+		return bins, nil
 	}
 
 	// "bin": "cli.js" is named after the package, without its scope.
 	var single string
 	if json.Unmarshal(pkg.Bin, &single) == nil {
-		name := pkg.Name[strings.LastIndex(pkg.Name, "/")+1:]
-		return single, single != "" && name == exe
+		if single != "" {
+			bins[pkg.Name[strings.LastIndex(pkg.Name, "/")+1:]] = single
+		}
+		return bins, nil
 	}
-	var bins map[string]string
-	if json.Unmarshal(pkg.Bin, &bins) == nil {
-		rel, ok := bins[exe]
-		return rel, ok && rel != ""
+	var m map[string]string
+	if err := json.Unmarshal(pkg.Bin, &m); err != nil {
+		return nil, fmt.Errorf("parse %s: bin: %w", path, err)
 	}
-	return "", false
+	for name, rel := range m {
+		if rel != "" {
+			bins[name] = rel
+		}
+	}
+	return bins, nil
+}
+
+// npmPackageExes returns the sorted executable names that pkg itself
+// declares, excluding those its dependencies add to node_modules/.bin.
+func npmPackageExes(binDir, pkg string) ([]string, error) {
+	pkgDir := filepath.Join(filepath.Dir(binDir), filepath.FromSlash(pkg))
+	bins, err := packageBins(pkgDir)
+	if err != nil {
+		return nil, err
+	}
+	if len(bins) == 0 {
+		return nil, fmt.Errorf("%s declares no executables", pkg)
+	}
+	names := make([]string, 0, len(bins))
+	for name := range bins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 // nodeShebang reports whether path starts with a shebang naming node, and
