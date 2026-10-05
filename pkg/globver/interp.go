@@ -1,9 +1,13 @@
 package globver
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+
+	"github.com/orkward/selever/pkg/install"
 )
 
 // NpmShimSpec builds the launcher spec for an executable in an npm package's
@@ -22,16 +26,98 @@ func NpmShimSpec(exe, binDir, nodeBinDir string) ShimSpec {
 		return spec
 	}
 
-	script := filepath.Join(binDir, exe)
+	script := npmBinScript(binDir, exe)
+	if script == "" {
+		return spec
+	}
 	args, ok := nodeShebang(script)
 	if !ok {
 		return spec
 	}
 
-	spec.Interp = filepath.Join(nodeBinDir, "node")
+	spec.Interp = filepath.Join(nodeBinDir, install.ExeName("node"))
 	spec.InterpArgs = args
 	spec.Script = script
 	return spec
+}
+
+// npmBinScript returns the script behind node_modules/.bin/<exe>, or "" when
+// it cannot be found.
+//
+// On Unix the .bin entry is a symlink to the script. On Windows npm writes
+// cmd-shim wrappers instead, so the script is looked up in the "bin" field of
+// the installed packages' package.json.
+func npmBinScript(binDir, exe string) string {
+	if runtime.GOOS != "windows" {
+		return filepath.Join(binDir, exe)
+	}
+
+	modules := filepath.Dir(binDir)
+	for _, pkgDir := range npmPackageDirs(modules) {
+		if rel, ok := packageBin(pkgDir, exe); ok {
+			return filepath.Join(pkgDir, filepath.FromSlash(rel))
+		}
+	}
+	return ""
+}
+
+// npmPackageDirs lists the package directories directly under a
+// node_modules directory, descending into @scope directories.
+func npmPackageDirs(modules string) []string {
+	entries, err := os.ReadDir(modules)
+	if err != nil {
+		return nil
+	}
+	var dirs []string
+	for _, e := range entries {
+		name := e.Name()
+		if !e.IsDir() || strings.HasPrefix(name, ".") {
+			continue
+		}
+		if !strings.HasPrefix(name, "@") {
+			dirs = append(dirs, filepath.Join(modules, name))
+			continue
+		}
+		scoped, err := os.ReadDir(filepath.Join(modules, name))
+		if err != nil {
+			continue
+		}
+		for _, s := range scoped {
+			if s.IsDir() {
+				dirs = append(dirs, filepath.Join(modules, name, s.Name()))
+			}
+		}
+	}
+	return dirs
+}
+
+// packageBin returns the script path, relative to pkgDir, that the package
+// declares for executable exe.
+func packageBin(pkgDir, exe string) (string, bool) {
+	data, err := os.ReadFile(filepath.Join(pkgDir, "package.json"))
+	if err != nil {
+		return "", false
+	}
+	var pkg struct {
+		Name string          `json:"name"`
+		Bin  json.RawMessage `json:"bin"`
+	}
+	if json.Unmarshal(data, &pkg) != nil || len(pkg.Bin) == 0 {
+		return "", false
+	}
+
+	// "bin": "cli.js" is named after the package, without its scope.
+	var single string
+	if json.Unmarshal(pkg.Bin, &single) == nil {
+		name := pkg.Name[strings.LastIndex(pkg.Name, "/")+1:]
+		return single, single != "" && name == exe
+	}
+	var bins map[string]string
+	if json.Unmarshal(pkg.Bin, &bins) == nil {
+		rel, ok := bins[exe]
+		return rel, ok && rel != ""
+	}
+	return "", false
 }
 
 // nodeShebang reports whether path starts with a shebang naming node, and

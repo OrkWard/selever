@@ -274,7 +274,24 @@ npm retains its native integrity and lifecycle behavior.
 Dotnet packages are managed in the dotnet global tool store; Globver manages
 launchers for their commands.
 .PP
-Supported platforms are macOS and glibc Linux on amd64 and arm64.
+Supported platforms are macOS, glibc Linux, and Windows on amd64 and arm64.
+.PP
+On Windows a launcher is a copy of the Scoop shim
+.RI ( name .exe)
+with a
+.IR name .shim
+file naming its target, or a
+.IR name .cmd
+file when the target is a batch file.
+Launchers run their target by absolute path and do not change
+.BR PATH .
+Only
+.B .exe
+and
+.B .cmd
+files are exposed, and npm scripts are located through each package's
+.B bin
+field.
 .SH SEE ALSO
 .BR selever (1),
 .BR fetchver (1),

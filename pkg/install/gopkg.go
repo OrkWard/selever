@@ -57,11 +57,11 @@ func InstallGopkg(ctx context.Context, pkg, pkgVersion, goVersion string) (insta
 		return "", "", err
 	}
 
-	goBin := filepath.Join(goDir, "bin", "go")
+	goBin := filepath.Join(ToolBinDir("go", goDir), ExeName("go"))
 	spec := pkg + "@" + pkgVersion
 
 	// Use GOBIN to install directly into our bin directory.
-	env := prependPath(os.Environ(), filepath.Join(goDir, "bin"))
+	env := prependPath(os.Environ(), ToolBinDir("go", goDir))
 	env = append(env, "GOBIN="+binDir)
 
 	cmd := exec.CommandContext(ctx, goBin, "install", spec)

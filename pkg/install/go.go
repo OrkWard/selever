@@ -16,11 +16,7 @@ func GoInstalled(version string) (string, bool) {
 		return "", false
 	}
 	dir := p.InstallDir("go", version)
-	bin := p.BinDir("go", version)
-	if _, err := os.Stat(bin); err == nil {
-		return dir, true
-	}
-	return dir, false
+	return dir, toolInstalled("go", dir)
 }
 
 // InstallGo downloads and extracts a Go release.
@@ -31,14 +27,14 @@ func InstallGo(ctx context.Context, version string) (string, error) {
 	}
 
 	dir := p.InstallDir("go", version)
-	if _, err := os.Stat(p.BinDir("go", version)); err == nil {
+	if toolInstalled("go", dir) {
 		return dir, nil // already installed
 	}
 
 	cacheDir := p.CacheDir("go")
 	platform := goPlatform()
 	arch := goArch()
-	archiveName := fmt.Sprintf("go%s.%s-%s.tar.gz", version, platform, arch)
+	archiveName := fmt.Sprintf("go%s.%s-%s%s", version, platform, arch, archiveExt())
 	url := fmt.Sprintf("https://go.dev/dl/%s", archiveName)
 
 	sha256, err := fetchGoChecksum(version, archiveName)

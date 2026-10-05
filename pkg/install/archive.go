@@ -223,8 +223,9 @@ func isValidSHA256(s string) bool {
 }
 
 // stripTopDir strips the first path component. e.g. "node-v22.14.0/bin/node" → "bin/node".
+// Archive entry names always use '/', whatever the host separator.
 func stripTopDir(p string) string {
-	parts := strings.SplitN(p, string(filepath.Separator), 2)
+	parts := strings.SplitN(p, "/", 2)
 	if len(parts) < 2 {
 		return ""
 	}

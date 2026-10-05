@@ -16,11 +16,7 @@ func NodeInstalled(version string) (string, bool) {
 		return "", false
 	}
 	dir := p.InstallDir("node", version)
-	bin := p.BinDir("node", version)
-	if _, err := os.Stat(bin); err == nil {
-		return dir, true
-	}
-	return dir, false
+	return dir, toolInstalled("node", dir)
 }
 
 // InstallNode downloads and extracts a Node.js release.
@@ -31,14 +27,14 @@ func InstallNode(ctx context.Context, version string) (string, error) {
 	}
 
 	dir := p.InstallDir("node", version)
-	if _, err := os.Stat(p.BinDir("node", version)); err == nil {
+	if toolInstalled("node", dir) {
 		return dir, nil // already installed
 	}
 
 	cacheDir := p.CacheDir("node")
 	platform := nodePlatform()
 	arch := nodeArch()
-	archiveName := fmt.Sprintf("node-v%s-%s-%s.tar.gz", version, platform, arch)
+	archiveName := fmt.Sprintf("node-v%s-%s-%s%s", version, platform, arch, archiveExt())
 	url := fmt.Sprintf("https://nodejs.org/dist/v%s/%s", version, archiveName)
 
 	// Fetch checksum.

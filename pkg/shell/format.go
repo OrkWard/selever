@@ -3,6 +3,8 @@ package shell
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -18,7 +20,7 @@ func FormatPATH(shell Name, dir string) string {
 	case Pwsh:
 		return fmt.Sprintf("$env:PATH = %q + %q + $env:PATH\n", dir, string(pathSep(shell)))
 	case Nu:
-		return nuJSON(dir)
+		return formatNuMulti([]string{dir})
 	default:
 		return fmt.Sprintf("export PATH=%q:$PATH\n", dir)
 	}
@@ -86,16 +88,15 @@ func formatPwshMulti(dirs []string) string {
 
 // --- Nushell ---
 
-// nuJSON returns a JSON object for load-env with only the directory to prepend.
-// Nushell users pipe through: … | from json | each {|x| load-env {PATH: $"($x.PATH):($env.PATH)"}}
-func nuJSON(dir string) string {
-	obj := map[string]string{"PATH": dir}
-	out, _ := json.Marshal(obj)
-	return string(out) + "\n"
-}
-
+// formatNuMulti returns a JSON object holding the complete new PATH as a list:
+// dirs followed by the inherited PATH entries. Apply it with:
+//
+//	selever node 22.14.0 | from json | load-env
+//
+// Nushell matches PATH case-insensitively on Windows, so this also updates Path.
 func formatNuMulti(dirs []string) string {
-	obj := map[string]string{"PATH": strings.Join(dirs, ":")}
-	out, _ := json.Marshal(obj)
+	path := append([]string{}, dirs...)
+	path = append(path, filepath.SplitList(os.Getenv("PATH"))...)
+	out, _ := json.Marshal(map[string][]string{"PATH": path})
 	return string(out) + "\n"
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/orkward/selever/pkg/install"
@@ -33,5 +32,5 @@ func runGo(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Print(shell.FormatPATH(resolvedShell(), filepath.Join(dir, "bin")))
+	fmt.Print(shell.FormatPATH(resolvedShell(), install.ToolBinDir("go", dir)))
 }

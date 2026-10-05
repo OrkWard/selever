@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 )
 
 // NpmInstalled checks whether an npm package is already installed.
@@ -64,12 +65,21 @@ func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (insta
 	}
 
 	// Prepare environment: put the correct node at the front of PATH.
-	nodeBin := filepath.Join(nodeDir, "bin")
+	nodeBin := ToolBinDir("node", nodeDir)
 	env := prependPath(os.Environ(), nodeBin)
 
 	spec := pkg + "@" + pkgVersion
 
-	cmd := exec.CommandContext(ctx, "npm", "install", "--no-save", "--prefix", installDir, spec)
+	npmArgs := []string{"install", "--no-save", "--prefix", installDir, spec}
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// Run npm's entry script with the pinned node.exe instead of npm.cmd,
+		// which would go through cmd.exe argument parsing.
+		npmCLI := filepath.Join(nodeDir, "node_modules", "npm", "bin", "npm-cli.js")
+		cmd = exec.CommandContext(ctx, filepath.Join(nodeBin, ExeName("node")), append([]string{npmCLI}, npmArgs...)...)
+	} else {
+		cmd = exec.CommandContext(ctx, "npm", npmArgs...)
+	}
 	cmd.Env = env
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
@@ -92,23 +102,4 @@ func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (insta
 func npmInstallDir(p *Paths, pkg, pkgVersion string) string {
 	ident := fmt.Sprintf("%s-%s", pkg, pkgVersion)
 	return filepath.Join(p.Data, "npm", ident)
-}
-
-// prependPath returns a copy of env with dir prepended to PATH.
-func prependPath(env []string, dir string) []string {
-	out := make([]string, 0, len(env)+1)
-	prefix := "PATH="
-	found := false
-	for _, e := range env {
-		if !found && len(e) >= len(prefix) && e[:len(prefix)] == prefix {
-			out = append(out, prefix+dir+":"+e[len(prefix):])
-			found = true
-		} else {
-			out = append(out, e)
-		}
-	}
-	if !found {
-		out = append(out, "PATH="+dir)
-	}
-	return out
 }

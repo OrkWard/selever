@@ -43,8 +43,9 @@ func Canonical(s string) Name {
 
 // DetectShell returns the canonical name of the invoking shell.
 //
-// On Linux it reads /proc/<ppid>/comm. On macOS and other Unix systems it
-// falls back to the SHELL environment variable, taking the basename.
+// It inspects the parent process: /proc/<ppid>/comm on Linux, ps on macOS,
+// and a process snapshot on Windows. Otherwise it falls back to the SHELL
+// environment variable, taking the basename.
 func DetectShell() Name {
 	name := detect()
 	if c := Canonical(name); c != "" {
@@ -67,5 +68,5 @@ func shellFromEnv() string {
 	if s == "" {
 		return ""
 	}
-	return strings.ToLower(filepath.Base(s))
+	return strings.TrimSuffix(strings.ToLower(filepath.Base(s)), ".exe")
 }

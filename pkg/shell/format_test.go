@@ -1,10 +1,15 @@
 package shell
 
 import (
+	"os"
+	"strings"
 	"testing"
 )
 
 func TestFormatPATH(t *testing.T) {
+	sep := string(os.PathListSeparator)
+	t.Setenv("PATH", strings.Join([]string{"/old1", "/old2"}, sep))
+
 	tests := []struct {
 		shell Name
 		dir   string
@@ -17,8 +22,8 @@ func TestFormatPATH(t *testing.T) {
 		{Fish, "/usr/local/bin", "set -gx PATH \"/usr/local/bin\" $PATH;\n"},
 		{Pwsh, "/usr/local/bin", "$env:PATH = \"/usr/local/bin\" + \";\" + $env:PATH\n"},
 		{Powershell, "/usr/local/bin", "$env:PATH = \"/usr/local/bin\" + \";\" + $env:PATH\n"},
-		{Nu, "/usr/local/bin", "{\"PATH\":\"/usr/local/bin\"}\n"},
-		{Nushell, "/usr/local/bin", "{\"PATH\":\"/usr/local/bin\"}\n"},
+		{Nu, "/usr/local/bin", "{\"PATH\":[\"/usr/local/bin\",\"/old1\",\"/old2\"]}\n"},
+		{Nushell, "/usr/local/bin", "{\"PATH\":[\"/usr/local/bin\",\"/old1\",\"/old2\"]}\n"},
 	}
 
 	for _, tt := range tests {
@@ -30,6 +35,7 @@ func TestFormatPATH(t *testing.T) {
 }
 
 func TestFormatMultiPATH(t *testing.T) {
+	t.Setenv("PATH", "/old")
 	dirs := []string{"/a", "/b"}
 
 	got := FormatMultiPATH(Sh, dirs)
@@ -51,7 +57,7 @@ func TestFormatMultiPATH(t *testing.T) {
 	}
 
 	got = FormatMultiPATH(Nu, dirs)
-	want = "{\"PATH\":\"/a:/b\"}\n"
+	want = "{\"PATH\":[\"/a\",\"/b\",\"/old\"]}\n"
 	if got != want {
 		t.Errorf("FormatMultiPATH(nu) = %q, want %q", got, want)
 	}

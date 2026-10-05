@@ -9,6 +9,7 @@ import (
 func TestResolvePaths(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("XDG_CACHE_HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
@@ -57,7 +58,7 @@ func TestResolvePathsXDG(t *testing.T) {
 func TestInstallDir(t *testing.T) {
 	p := &Paths{Data: "/data/selever"}
 	dir := p.InstallDir("node", "22.14.0")
-	if dir != "/data/selever/node/22.14.0" {
+	if dir != filepath.Join("/data", "selever", "node", "22.14.0") {
 		t.Errorf("InstallDir = %q", dir)
 	}
 }
@@ -65,7 +66,7 @@ func TestInstallDir(t *testing.T) {
 func TestBinDir(t *testing.T) {
 	p := &Paths{Data: "/data/selever"}
 	bin := p.BinDir("go", "1.21.0")
-	if bin != "/data/selever/go/1.21.0/bin" {
+	if bin != filepath.Join("/data", "selever", "go", "1.21.0", "bin") {
 		t.Errorf("BinDir = %q", bin)
 	}
 }
@@ -73,6 +74,7 @@ func TestBinDir(t *testing.T) {
 func TestResolvePathsCreatesDirs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("XDG_CACHE_HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", "")

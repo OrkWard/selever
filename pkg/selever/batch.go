@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/orkward/selever/pkg/install"
@@ -74,7 +73,7 @@ func processBatchLine(ctx context.Context, line string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(dir, "bin"), nil
+		return install.ToolBinDir("node", dir), nil
 
 	case "go":
 		if len(fields) != 2 {
@@ -85,7 +84,7 @@ func processBatchLine(ctx context.Context, line string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(dir, "bin"), nil
+		return install.ToolBinDir("go", dir), nil
 
 	case "npm":
 		return processBatchNpm(ctx, fields)

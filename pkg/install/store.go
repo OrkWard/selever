@@ -44,9 +44,9 @@ func (p *Paths) InstallDir(tool, version string) string {
 	return filepath.Join(p.Data, tool, version)
 }
 
-// BinDir returns the bin directory inside an installation.
+// BinDir returns the executable directory inside a toolchain installation.
 func (p *Paths) BinDir(tool, version string) string {
-	return filepath.Join(p.InstallDir(tool, version), "bin")
+	return ToolBinDir(tool, p.InstallDir(tool, version))
 }
 
 // CacheDir returns the cache directory for a tool.

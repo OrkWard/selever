@@ -111,8 +111,14 @@ For fish it writes a
 .B set \-gx PATH
 command, and for PowerShell it writes an assignment to
 .BR $env:PATH .
-For Nushell it writes a JSON object suitable for
-.BR load-env .
+For Nushell it writes a JSON object whose
+.B PATH
+is the complete new search path as a list, suitable for
+.BR load-env :
+.PP
+.EX
+selever node 22.14.0 | from json | load-env
+.EE
 .SH ENVIRONMENT
 .TP
 .B HOME
@@ -174,7 +180,13 @@ npm retains its native integrity and lifecycle behavior.
 Installations are completed in a staging directory and moved into place
 atomically while holding an exclusive lock for the installation identity.
 .PP
-Supported platforms are macOS and glibc Linux on amd64 and arm64.
+Supported platforms are macOS, glibc Linux, and Windows on amd64 and arm64.
+On Windows, Node.js executables are in the installation root rather than
+.IR bin ,
+and
+.B HOME
+is read from
+.BR USERPROFILE .
 .SH SEE ALSO
 .BR fetchver (1),
 .BR globver (1)

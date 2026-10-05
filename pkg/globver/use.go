@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -90,14 +91,15 @@ func runUseNode(cmd *cobra.Command, args []string) {
 	}
 
 	// Discover executables.
-	exes, err := listBinDir(filepath.Join(dir, "bin"))
+	nodeBin := install.ToolBinDir("node", dir)
+	exes, err := listBinDir(nodeBin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "globver use node: %v\n", err)
 		os.Exit(1)
 	}
 
 	selector := []string{"node", version}
-	if err := registerAndShim(exes, selector, toolchainSpec(filepath.Join(dir, "bin"))); err != nil {
+	if err := registerAndShim(exes, selector, toolchainSpec(nodeBin)); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use node: %v\n", err)
 		os.Exit(1)
 	}
@@ -114,14 +116,15 @@ func runUseGo(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	exes, err := listBinDir(filepath.Join(dir, "bin"))
+	goBin := install.ToolBinDir("go", dir)
+	exes, err := listBinDir(goBin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "globver use go: %v\n", err)
 		os.Exit(1)
 	}
 
 	selector := []string{"go", version}
-	if err := registerAndShim(exes, selector, toolchainSpec(filepath.Join(dir, "bin"))); err != nil {
+	if err := registerAndShim(exes, selector, toolchainSpec(goBin)); err != nil {
 		fmt.Fprintf(os.Stderr, "globver use go: %v\n", err)
 		os.Exit(1)
 	}
@@ -204,6 +207,9 @@ func runUseGopkg(cmd *cobra.Command, args []string) {
 // --- helpers ---
 
 // listBinDir returns sorted names of regular files in a directory.
+//
+// On Windows only .exe and .cmd files count, named without the extension, so
+// npm's foo/foo.cmd/foo.ps1 trio and Node.js's root files yield one name each.
 func listBinDir(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -211,9 +217,21 @@ func listBinDir(dir string) ([]string, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if e.Type().IsRegular() || e.Type()&os.ModeSymlink != 0 {
-			names = append(names, e.Name())
+		if !e.Type().IsRegular() && e.Type()&os.ModeSymlink == 0 {
+			continue
 		}
+		name := e.Name()
+		if runtime.GOOS == "windows" {
+			ext := strings.ToLower(filepath.Ext(name))
+			if ext != ".exe" && ext != ".cmd" {
+				continue
+			}
+			name = strings.TrimSuffix(name, filepath.Ext(name))
+			if slices.Contains(names, name) {
+				continue
+			}
+		}
+		names = append(names, name)
 	}
 	// Sort for deterministic output.
 	// (no sort needed for small lists, but good practice)
@@ -409,8 +427,7 @@ func listInstalledVersions(tool string) []string {
 		if !e.IsDir() {
 			continue
 		}
-		binDir := filepath.Join(toolDir, e.Name(), "bin")
-		if info, err := os.Stat(binDir); err == nil && info.IsDir() {
+		if _, ok := installed(tool, e.Name()); ok {
 			versions = append(versions, e.Name())
 		}
 	}
@@ -420,6 +437,17 @@ func listInstalledVersions(tool string) []string {
 	})
 
 	return versions
+}
+
+// installed reports whether a toolchain version is completely installed.
+func installed(tool, version string) (string, bool) {
+	switch tool {
+	case "node":
+		return install.NodeInstalled(version)
+	case "go":
+		return install.GoInstalled(version)
+	}
+	return "", false
 }
 
 // compareVersions compares two dotted version strings.
