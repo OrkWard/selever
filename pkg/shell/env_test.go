@@ -2,6 +2,7 @@ package shell
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -64,10 +65,24 @@ func TestFormatEnvNu(t *testing.T) {
 
 	got := FormatEnv(Nu, testEnv())
 	want := `{"INCLUDE":"C:\\vc\\include` + sep + `C:\\sdk\\ucrt` + sep + `C:\\sdk\\um` + sep + `/inc",` +
-		`"PATH":["C:\\vc\\bin","C:\\sdk\\bin","/old"],` +
+		`"` + envName("PATH") + `":["C:\\vc\\bin","C:\\sdk\\bin","/old"],` +
 		`"VCToolsVersion":"14.44.1","WindowsSDKVersion":"10.0.26100.0\\"}` + "\n"
 	if got != want {
 		t.Errorf("FormatEnv(nu) = %s, want %s", got, want)
+	}
+}
+
+func TestEnvName(t *testing.T) {
+	t.Setenv("Selever_Case_Test", "x")
+	want := "SELEVER_CASE_TEST"
+	if runtime.GOOS == "windows" {
+		want = "Selever_Case_Test" // names are case-insensitive; keep the existing spelling
+	}
+	if got := envName("SELEVER_CASE_TEST"); got != want {
+		t.Errorf("envName = %q, want %q", got, want)
+	}
+	if got := envName("SELEVER_UNSET_TEST"); got != "SELEVER_UNSET_TEST" {
+		t.Errorf("envName(unset) = %q", got)
 	}
 }
 

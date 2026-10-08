@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -174,14 +175,29 @@ func pwshQuote(s string) string {
 
 // --- Nushell ---
 
+// envName returns name as spelled in the current environment. Windows names
+// are case-insensitive, and nushell's load-env given another spelling (PATH
+// for Path) can hand externals either spelling.
+func envName(name string) string {
+	if runtime.GOOS != "windows" {
+		return name
+	}
+	for _, kv := range os.Environ() {
+		if k, _, ok := strings.Cut(kv, "="); ok && strings.EqualFold(k, name) {
+			return k
+		}
+	}
+	return name
+}
+
 // formatNu returns a JSON object to apply with load-env:
 //
 //	selever node 22.14.0 | from json | load-env
 //
 // PATH is the complete new search path as a list: the new entries followed by
-// the inherited ones. Nushell matches PATH case-insensitively on Windows, so
-// this also updates Path. Other list variables are strings that hold the new
-// entries followed by the inherited value.
+// the inherited ones. Other list variables are strings that hold the new
+// entries followed by the inherited value. Keys use the spelling of the
+// inherited variable (Path on Windows).
 func formatNu(e *Env) string {
 	out := map[string]any{}
 	for _, l := range e.lists {
@@ -190,17 +206,17 @@ func formatNu(e *Env) string {
 		}
 		if isPath(l.name) {
 			path := append([]string{}, l.entries...)
-			out["PATH"] = append(path, filepath.SplitList(os.Getenv("PATH"))...)
+			out[envName("PATH")] = append(path, filepath.SplitList(os.Getenv("PATH"))...)
 			continue
 		}
 		v := strings.Join(l.entries, listSep)
 		if cur := os.Getenv(l.name); cur != "" {
 			v += listSep + cur
 		}
-		out[l.name] = v
+		out[envName(l.name)] = v
 	}
 	for _, v := range e.vars {
-		out[v.name] = v.value
+		out[envName(v.name)] = v.value
 	}
 	data, _ := json.Marshal(out)
 	return string(data) + "\n"

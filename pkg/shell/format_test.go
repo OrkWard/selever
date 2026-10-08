@@ -9,6 +9,7 @@ import (
 func TestFormatPathEnv(t *testing.T) {
 	sep := string(os.PathListSeparator)
 	t.Setenv("PATH", strings.Join([]string{"/old1", "/old2"}, sep))
+	pathKey := envName("PATH") // Path on Windows
 
 	tests := []struct {
 		shell Name
@@ -22,8 +23,8 @@ func TestFormatPathEnv(t *testing.T) {
 		{Fish, "/usr/local/bin", "set -gx PATH \"/usr/local/bin\" $PATH;\n"},
 		{Pwsh, "/usr/local/bin", "$env:PATH = '/usr/local/bin' + ';' + $env:PATH\n"},
 		{Powershell, "/usr/local/bin", "$env:PATH = '/usr/local/bin' + ';' + $env:PATH\n"},
-		{Nu, "/usr/local/bin", "{\"PATH\":[\"/usr/local/bin\",\"/old1\",\"/old2\"]}\n"},
-		{Nushell, "/usr/local/bin", "{\"PATH\":[\"/usr/local/bin\",\"/old1\",\"/old2\"]}\n"},
+		{Nu, "/usr/local/bin", "{\"" + pathKey + "\":[\"/usr/local/bin\",\"/old1\",\"/old2\"]}\n"},
+		{Nushell, "/usr/local/bin", "{\"" + pathKey + "\":[\"/usr/local/bin\",\"/old1\",\"/old2\"]}\n"},
 	}
 
 	for _, tt := range tests {
@@ -57,7 +58,7 @@ func TestFormatPathEnvMulti(t *testing.T) {
 	}
 
 	got = FormatEnv(Nu, PathEnv(dirs...))
-	want = "{\"PATH\":[\"/a\",\"/b\",\"/old\"]}\n"
+	want = "{\"" + envName("PATH") + "\":[\"/a\",\"/b\",\"/old\"]}\n"
 	if got != want {
 		t.Errorf("FormatEnv(nu) = %q, want %q", got, want)
 	}
