@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestFormatPATH(t *testing.T) {
+func TestFormatPathEnv(t *testing.T) {
 	sep := string(os.PathListSeparator)
 	t.Setenv("PATH", strings.Join([]string{"/old1", "/old2"}, sep))
 
@@ -20,46 +20,46 @@ func TestFormatPATH(t *testing.T) {
 		{Zsh, "/usr/local/bin", "export PATH=\"/usr/local/bin\":$PATH\n"},
 		{Auto, "/usr/local/bin", "export PATH=\"/usr/local/bin\":$PATH\n"},
 		{Fish, "/usr/local/bin", "set -gx PATH \"/usr/local/bin\" $PATH;\n"},
-		{Pwsh, "/usr/local/bin", "$env:PATH = \"/usr/local/bin\" + \";\" + $env:PATH\n"},
-		{Powershell, "/usr/local/bin", "$env:PATH = \"/usr/local/bin\" + \";\" + $env:PATH\n"},
+		{Pwsh, "/usr/local/bin", "$env:PATH = '/usr/local/bin' + ';' + $env:PATH\n"},
+		{Powershell, "/usr/local/bin", "$env:PATH = '/usr/local/bin' + ';' + $env:PATH\n"},
 		{Nu, "/usr/local/bin", "{\"PATH\":[\"/usr/local/bin\",\"/old1\",\"/old2\"]}\n"},
 		{Nushell, "/usr/local/bin", "{\"PATH\":[\"/usr/local/bin\",\"/old1\",\"/old2\"]}\n"},
 	}
 
 	for _, tt := range tests {
-		got := FormatPATH(tt.shell, tt.dir)
+		got := FormatEnv(tt.shell, PathEnv(tt.dir))
 		if got != tt.want {
-			t.Errorf("FormatPATH(%q, %q) = %q, want %q", tt.shell, tt.dir, got, tt.want)
+			t.Errorf("FormatEnv(PathEnv)(%q, %q) = %q, want %q", tt.shell, tt.dir, got, tt.want)
 		}
 	}
 }
 
-func TestFormatMultiPATH(t *testing.T) {
+func TestFormatPathEnvMulti(t *testing.T) {
 	t.Setenv("PATH", "/old")
 	dirs := []string{"/a", "/b"}
 
-	got := FormatMultiPATH(Sh, dirs)
+	got := FormatEnv(Sh, PathEnv(dirs...))
 	want := "export PATH=\"/a\":\"/b\":$PATH\n"
 	if got != want {
-		t.Errorf("FormatMultiPATH(sh) = %q, want %q", got, want)
+		t.Errorf("FormatEnv(sh) = %q, want %q", got, want)
 	}
 
-	got = FormatMultiPATH(Fish, dirs)
+	got = FormatEnv(Fish, PathEnv(dirs...))
 	want = "set -gx PATH \"/a\" \"/b\" $PATH;\n"
 	if got != want {
-		t.Errorf("FormatMultiPATH(fish) = %q, want %q", got, want)
+		t.Errorf("FormatEnv(fish) = %q, want %q", got, want)
 	}
 
-	got = FormatMultiPATH(Pwsh, dirs)
-	want = "$env:PATH = \"/a\" + \";\" + \"/b\" + \";\" + $env:PATH\n"
+	got = FormatEnv(Pwsh, PathEnv(dirs...))
+	want = "$env:PATH = '/a' + ';' + '/b' + ';' + $env:PATH\n"
 	if got != want {
-		t.Errorf("FormatMultiPATH(pwsh) = %q, want %q", got, want)
+		t.Errorf("FormatEnv(pwsh) = %q, want %q", got, want)
 	}
 
-	got = FormatMultiPATH(Nu, dirs)
+	got = FormatEnv(Nu, PathEnv(dirs...))
 	want = "{\"PATH\":[\"/a\",\"/b\",\"/old\"]}\n"
 	if got != want {
-		t.Errorf("FormatMultiPATH(nu) = %q, want %q", got, want)
+		t.Errorf("FormatEnv(nu) = %q, want %q", got, want)
 	}
 }
 

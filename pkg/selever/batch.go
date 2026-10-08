@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/orkward/selever/pkg/shell"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var batchCmd = &cobra.Command{
@@ -25,8 +27,7 @@ Processing stops at the first invalid selector or failed installation.`,
 }
 
 func runBatch(cmd *cobra.Command, args []string) {
-	ctx := context.Background()
-	var dirs []string
+	env := &shell.Env{}
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -35,12 +36,12 @@ func runBatch(cmd *cobra.Command, args []string) {
 			continue
 		}
 
-		d, err := processBatchLine(ctx, line)
+		e, err := processBatchLine(cmd.Context(), line)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "selever batch: %v\n", err)
 			os.Exit(1)
 		}
-		dirs = append(dirs, d)
+		env.Merge(e)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -48,103 +49,62 @@ func runBatch(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if len(dirs) > 0 {
-		fmt.Print(shell.FormatMultiPATH(resolvedShell(), dirs))
+	if !env.Empty() {
+		printEnv(env)
 	}
 }
 
 // processBatchLine parses a batch input line and installs the selection.
-// Returns the bin directory to add to PATH.
-func processBatchLine(ctx context.Context, line string) (string, error) {
+func processBatchLine(ctx context.Context, line string) (*shell.Env, error) {
 	fields := strings.Fields(line)
-	if len(fields) < 2 {
-		return "", fmt.Errorf("invalid batch line: %q", line)
-	}
-
 	tool := fields[0]
+	flags := pflag.NewFlagSet(tool, pflag.ContinueOnError)
+	flags.SetOutput(io.Discard)
 
 	switch tool {
 	case "node":
-		if len(fields) != 2 {
-			return "", fmt.Errorf("node selector requires exactly a version")
+		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 {
+			return nil, fmt.Errorf("node selector requires exactly a version")
 		}
-		version := strings.TrimPrefix(fields[1], "v")
-		dir, err := install.InstallNode(ctx, version)
-		if err != nil {
-			return "", err
-		}
-		return install.ToolBinDir("node", dir), nil
+		return selectNode(ctx, flags.Arg(0))
 
 	case "go":
-		if len(fields) != 2 {
-			return "", fmt.Errorf("go selector requires exactly a version")
+		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 {
+			return nil, fmt.Errorf("go selector requires exactly a version")
 		}
-		version := strings.TrimPrefix(fields[1], "go")
-		dir, err := install.InstallGo(ctx, version)
-		if err != nil {
-			return "", err
-		}
-		return install.ToolBinDir("go", dir), nil
+		return selectGo(ctx, flags.Arg(0))
 
 	case "npm":
-		return processBatchNpm(ctx, fields)
+		node := flags.String("node", "", "")
+		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 || *node == "" {
+			return nil, fmt.Errorf("npm selector requires --node=<version> and <package@version>")
+		}
+		return selectNpm(ctx, flags.Arg(0), *node)
 
 	case "gopkg":
-		return processBatchGopkg(ctx, fields)
+		goVersion := flags.String("go", "", "")
+		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 || *goVersion == "" {
+			return nil, fmt.Errorf("gopkg selector requires --go=<version> and <package@version>")
+		}
+		return selectGopkg(ctx, flags.Arg(0), *goVersion)
+
+	case "msvc":
+		host := flags.String("host", "", "")
+		target := flags.String("target", "", "")
+		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 {
+			return nil, fmt.Errorf("msvc selector requires a version and optional --host=<arch> --target=<arch>")
+		}
+		return install.InstallMSVC(ctx, flags.Arg(0), *host, *target)
+
+	case "winsdk":
+		host := flags.String("host", "", "")
+		target := flags.String("target", "", "")
+		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 {
+			return nil, fmt.Errorf("winsdk selector requires a build and optional --host=<arch> --target=<arch>")
+		}
+		return install.InstallWinSDK(ctx, flags.Arg(0), *host, *target)
 
 	default:
-		return "", fmt.Errorf("unknown tool %q", tool)
+		return nil, fmt.Errorf("unknown tool %q", tool)
 	}
-}
-
-func processBatchNpm(ctx context.Context, fields []string) (string, error) {
-	// Format: npm [--node=<version>] <package@version>
-	var nodeVersion string
-	var spec string
-
-	for _, f := range fields[1:] {
-		if strings.HasPrefix(f, "--node=") {
-			nodeVersion = strings.TrimPrefix(f, "--node=")
-		} else {
-			spec = f
-		}
-	}
-
-	if spec == "" || nodeVersion == "" {
-		return "", fmt.Errorf("npm batch selector requires --node=<version> and <package@version>")
-	}
-
-	pkg, version := parsePackageSpec(spec)
-	if pkg == "" || version == "" {
-		return "", fmt.Errorf("invalid npm package spec %q", spec)
-	}
-
-	_, binDir, err := install.InstallNpm(ctx, pkg, version, nodeVersion)
-	return binDir, err
-}
-
-func processBatchGopkg(ctx context.Context, fields []string) (string, error) {
-	// Format: gopkg [--go=<version>] <package@version>
-	var goVersion string
-	var spec string
-
-	for _, f := range fields[1:] {
-		if strings.HasPrefix(f, "--go=") {
-			goVersion = strings.TrimPrefix(f, "--go=")
-		} else {
-			spec = f
-		}
-	}
-
-	if spec == "" || goVersion == "" {
-		return "", fmt.Errorf("gopkg batch selector requires --go=<version> and <package@version>")
-	}
-
-	pkg, version := parsePackageSpec(spec)
-	if pkg == "" || version == "" {
-		return "", fmt.Errorf("invalid gopkg spec %q", spec)
-	}
-
-	_, binDir, err := install.InstallGopkg(ctx, pkg, version, goVersion)
-	return binDir, err
 }

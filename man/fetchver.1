@@ -13,6 +13,14 @@ fetchver \- resolve a version query to an exact version
 .br
 .B fetchver dotnet
 .I package[@version]
+.br
+.B fetchver msvc
+.I version
+.RB [ \-\-host=\fIarch\fR ]
+.RB [ \-\-target=\fIarch\fR ]
+.br
+.B fetchver winsdk
+.I version
 .SH DESCRIPTION
 .B fetchver
 resolves a version prefix, tag, codename, or package query and writes the
@@ -22,8 +30,11 @@ It is intended for commands such as
 that require exact versions.
 .PP
 The
-.B node
-command prints a version number.
+.BR node ,
+.BR msvc ,
+and
+.B winsdk
+commands print a version number.
 Package commands print the package name followed by
 .B @
 and the resolved version.
@@ -67,7 +78,56 @@ Omitting it is equivalent to
 .BR @latest .
 Package names are matched without regard to case, and the registry's spelling
 is used in the result.
+.TP
+.BI "msvc " version
+Resolve an MSVC toolset through the Visual Studio 2026 stable channel
+manifest, which also lists the Visual Studio 2019 and 2022 toolsets.
+.I version
+may be
+.BR latest ,
+a prefix of the toolset version that ends at a dot
+.RB ( 14 ,
+.BR 14.44 ,
+.BR 14.44.17.14 ),
+or a package build version such as
+.BR 14.44.35229 .
+Toolset versions have four parts up to 14.50
+.RB ( 14.44.17.14
+is toolset 14.44 from Visual Studio 17.14) and two parts after it
+.RB ( 14.51 ).
+Only toolsets with a compiler for the host and target are considered.
+.TP
+.BI "winsdk " version
+Resolve a Windows SDK build number.
+.I version
+may be
+.BR latest ,
+a build number such as
+.BR 26100 ,
+or a full version such as
+.BR 10.0.26100.0 .
 .SH OPTIONS
+.TP
+.BI \-\-host= arch
+For
+.BR msvc ,
+the architecture the compiler runs on:
+.BR x64 ,
+.BR x86 ,
+or
+.BR arm64 .
+The default is the native architecture.
+.TP
+.BI \-\-target= arch
+For
+.BR msvc ,
+the architecture to build for:
+.BR x64 ,
+.BR x86 ,
+.BR arm ,
+or
+.BR arm64 .
+The default is the host.
 .TP
 .B \-h, \-\-help
 Show help.
@@ -81,6 +141,10 @@ $ fetchver npm typescript@5
 typescript@5.9.3
 $ fetchver gopkg golang.org/x/tools/gopls@0.14
 golang.org/x/tools/gopls@v0.14.2
+$ fetchver msvc 14.44
+14.44.17.14
+$ fetchver winsdk latest
+28000
 .EE
 .SH NPM CONFIGURATION
 The npm resolver reads the user's npm configuration and then
@@ -126,7 +190,11 @@ Controls Go module resolution performed by
 Other Go environment variables used by that command also apply.
 .TP
 .B HTTP_PROXY, HTTPS_PROXY, NO_PROXY
-Control proxies for Node.js, npm, and NuGet HTTP requests.
+Control proxies for Node.js, npm, NuGet, and Visual Studio HTTP requests.
+.TP
+.B XDG_CACHE_HOME
+The Visual Studio manifest is cached for one hour in
+.IR ${XDG_CACHE_HOME:\-$HOME/.cache}/selever/vs .
 .TP
 .B PATH
 Used to locate

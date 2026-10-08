@@ -26,12 +26,30 @@ selever \- install an exact toolchain or package and print its shell environment
 .br
 .B selever
 .RI [ \-\-shell= shell ]
+.B msvc
+.I version
+.RB [ \-\-host=\fIarch\fR ]
+.RB [ \-\-target=\fIarch\fR ]
+.br
+.B selever
+.RI [ \-\-shell= shell ]
+.B winsdk
+.I build
+.RB [ \-\-host=\fIarch\fR ]
+.RB [ \-\-target=\fIarch\fR ]
+.br
+.B selever
+.RI [ \-\-shell= shell ]
 .B batch
 .SH DESCRIPTION
 .B selever
 installs the selected toolchain or package in an immutable directory and writes
 the shell code needed to add its executables to
 .BR PATH .
+MSVC and the Windows SDK also set
+.BR INCLUDE ,
+.BR LIB ,
+and related variables.
 Progress and diagnostics are written to standard error.
 .PP
 All versions passed to
@@ -61,6 +79,31 @@ A leading
 .B v
 on the module version is optional.
 .TP
+.BI "msvc " version
+Install an exact MSVC toolset (Windows only).
+.I version
+is the toolset version in the Visual Studio package id, such as
+.B 14.44.17.14
+or
+.BR 14.51 .
+The toolset is the compiler for one host and one target architecture, its
+C and C++ runtime headers and libraries, ASan, PGO, and the debug runtime DLLs.
+It does not include the Windows SDK; install it with
+.BR winsdk .
+.TP
+.BI "winsdk " build
+Install an exact Windows SDK (Windows only).
+.I build
+is the SDK build number, such as
+.BR 26100 .
+The SDK has the headers, the import libraries for the target, and the tools
+.RB ( rc ,
+.BR mt ,
+\&...) for the host.
+The MSIs are unpacked with
+.BR "msiexec /a" ,
+which needs no elevation.
+.TP
 .B batch
 Read selectors from standard input and emit one environment update.
 See
@@ -85,20 +128,74 @@ The default is
 which detects the invoking shell and falls back to
 .BR sh .
 .TP
+.BI \-\-host= arch
+For
+.B msvc
+and
+.BR winsdk ,
+the architecture the tools run on:
+.BR x64 ,
+.BR x86 ,
+or
+.BR arm64 .
+The default is the native architecture.
+.TP
+.BI \-\-target= arch
+For
+.B msvc
+and
+.BR winsdk ,
+the architecture to build for:
+.BR x64 ,
+.BR x86 ,
+.BR arm ,
+or
+.BR arm64 .
+The default is the host.
+.TP
 .B \-h, \-\-help
 Show help.
 .SH BATCH INPUT
 .B selever batch
-reads one selector per non-empty line.
-Fields are separated by whitespace.
-Processing stops at the first invalid selector or failed installation.
-The final environment update contains the executable directories from every
-successful selection, in input order.
+reads one selector per line: a
+.BR node ,
+.BR npm ,
+.BR go ,
+.BR gopkg ,
+.BR msvc ,
+or
+.B winsdk
+command with the same arguments and options as above, without
+.BR selever .
+.B \-\-shell
+is given once, to
+.BR "selever batch" .
+Fields are separated by whitespace; quoting is not supported.
+Blank lines and lines starting with
+.B #
+are ignored.
+Processing stops at the first failing line.
+The final environment update combines the updates of every line, in input
+order.
 .PP
 .EX
 selever batch <<'EOF'
 go 1.18
 gopkg --go=1.18 golang.org/x/tools/gopls@0.14.2
+EOF
+.EE
+.PP
+List
+.B msvc
+before
+.B winsdk
+so the MSVC headers come first in
+.BR INCLUDE :
+.PP
+.EX
+selever batch <<'EOF'
+msvc --target=x86 14.44.17.14
+winsdk --target=x86 26100
 EOF
 .EE
 .SH OUTPUT
@@ -111,10 +208,16 @@ For fish it writes a
 .B set \-gx PATH
 command, and for PowerShell it writes an assignment to
 .BR $env:PATH .
+Other list variables, such as
+.BR INCLUDE ,
+are prepended in the same way with the platform's list separator, and other
+variables are assigned.
 For Nushell it writes a JSON object whose
 .B PATH
 is the complete new search path as a list, suitable for
-.BR load-env :
+.BR load-env .
+Other list variables are strings holding the new entries followed by the
+inherited value:
 .PP
 .EX
 selever node 22.14.0 | from json | load-env
@@ -174,8 +277,20 @@ Resolve a non-exact version before installing it:
 .EX
 selever node "$(fetchver node 22)"
 .EE
+.PP
+Install the latest MSVC and Windows SDK in Nushell:
+.PP
+.EX
+$"msvc (fetchver msvc latest)\\nwinsdk (fetchver winsdk latest)\\n"
+| selever batch | from json | load-env
+.EE
 .SH NOTES
-Node.js and Go archives are checksum-verified.
+Node.js and Go archives and MSVC and Windows SDK payloads are
+checksum-verified.
+MSVC and the Windows SDK are downloaded from the Visual Studio 2026 stable
+channel manifest, which also lists the Visual Studio 2019 and 2022 toolsets.
+The manifest is cached and refetched only when a requested version is missing
+from it.
 npm retains its native integrity and lifecycle behavior.
 Installations are completed in a staging directory and moved into place
 atomically while holding an exclusive lock for the installation identity.

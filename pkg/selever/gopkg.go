@@ -21,7 +21,14 @@ and print shell environment code.
 
 A leading "v" on the module version is optional.`,
 	Args: cobra.ExactArgs(1),
-	Run:  runGopkg,
+	Run: func(cmd *cobra.Command, args []string) {
+		env, err := selectGopkg(cmd.Context(), args[0], gopkgGoVersion)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "selever gopkg: %v\n", err)
+			os.Exit(1)
+		}
+		printEnv(env)
+	},
 }
 
 func init() {
@@ -29,20 +36,14 @@ func init() {
 	gopkgCmd.MarkFlagRequired("go")
 }
 
-func runGopkg(cmd *cobra.Command, args []string) {
-	spec := args[0]
+func selectGopkg(ctx context.Context, spec, goVersion string) (*shell.Env, error) {
 	pkg, version := parsePackageSpec(spec)
 	if pkg == "" || version == "" {
-		fmt.Fprintf(os.Stderr, "selever gopkg: invalid package spec %q (expected package@version)\n", spec)
-		os.Exit(1)
+		return nil, fmt.Errorf("invalid package spec %q (expected package@version)", spec)
 	}
-
-	ctx := context.Background()
-	_, binDir, err := install.InstallGopkg(ctx, pkg, version, gopkgGoVersion)
+	_, binDir, err := install.InstallGopkg(ctx, pkg, version, goVersion)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "selever gopkg: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
-
-	fmt.Print(shell.FormatPATH(resolvedShell(), binDir))
+	return shell.PathEnv(binDir), nil
 }

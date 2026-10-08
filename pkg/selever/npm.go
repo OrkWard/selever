@@ -20,7 +20,14 @@ var npmCmd = &cobra.Command{
 	Long: `Install an exact npm package using the specified Node.js release
 and print shell environment code.`,
 	Args: cobra.ExactArgs(1),
-	Run:  runNpm,
+	Run: func(cmd *cobra.Command, args []string) {
+		env, err := selectNpm(cmd.Context(), args[0], npmNodeVersion)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "selever npm: %v\n", err)
+			os.Exit(1)
+		}
+		printEnv(env)
+	},
 }
 
 func init() {
@@ -28,22 +35,16 @@ func init() {
 	npmCmd.MarkFlagRequired("node")
 }
 
-func runNpm(cmd *cobra.Command, args []string) {
-	spec := args[0]
+func selectNpm(ctx context.Context, spec, nodeVersion string) (*shell.Env, error) {
 	pkg, version := parsePackageSpec(spec)
 	if pkg == "" || version == "" {
-		fmt.Fprintf(os.Stderr, "selever npm: invalid package spec %q (expected package@version)\n", spec)
-		os.Exit(1)
+		return nil, fmt.Errorf("invalid package spec %q (expected package@version)", spec)
 	}
-
-	ctx := context.Background()
-	_, binDir, err := install.InstallNpm(ctx, pkg, version, npmNodeVersion)
+	_, binDir, err := install.InstallNpm(ctx, pkg, version, nodeVersion)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "selever npm: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
-
-	fmt.Print(shell.FormatPATH(resolvedShell(), binDir))
+	return shell.PathEnv(binDir), nil
 }
 
 // parsePackageSpec splits "package@version" into (pkg, version).

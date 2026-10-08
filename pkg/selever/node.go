@@ -19,18 +19,20 @@ var nodeCmd = &cobra.Command{
 
 The version must be exact and without a leading "v".`,
 	Args: cobra.ExactArgs(1),
-	Run:  runNode,
+	Run: func(cmd *cobra.Command, args []string) {
+		env, err := selectNode(cmd.Context(), args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "selever node: %v\n", err)
+			os.Exit(1)
+		}
+		printEnv(env)
+	},
 }
 
-func runNode(cmd *cobra.Command, args []string) {
-	version := strings.TrimPrefix(args[0], "v")
-	ctx := context.Background()
-
-	dir, err := install.InstallNode(ctx, version)
+func selectNode(ctx context.Context, version string) (*shell.Env, error) {
+	dir, err := install.InstallNode(ctx, strings.TrimPrefix(version, "v"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "selever node: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
-
-	fmt.Print(shell.FormatPATH(resolvedShell(), install.ToolBinDir("node", dir)))
+	return shell.PathEnv(install.ToolBinDir("node", dir)), nil
 }

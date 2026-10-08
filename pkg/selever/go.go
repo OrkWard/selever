@@ -19,18 +19,20 @@ var goCmd = &cobra.Command{
 
 The version must be exact and without a leading "go".`,
 	Args: cobra.ExactArgs(1),
-	Run:  runGo,
+	Run: func(cmd *cobra.Command, args []string) {
+		env, err := selectGo(cmd.Context(), args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "selever go: %v\n", err)
+			os.Exit(1)
+		}
+		printEnv(env)
+	},
 }
 
-func runGo(cmd *cobra.Command, args []string) {
-	version := strings.TrimPrefix(args[0], "go")
-	ctx := context.Background()
-
-	dir, err := install.InstallGo(ctx, version)
+func selectGo(ctx context.Context, version string) (*shell.Env, error) {
+	dir, err := install.InstallGo(ctx, strings.TrimPrefix(version, "go"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "selever go: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
-
-	fmt.Print(shell.FormatPATH(resolvedShell(), install.ToolBinDir("go", dir)))
+	return shell.PathEnv(install.ToolBinDir("go", dir)), nil
 }

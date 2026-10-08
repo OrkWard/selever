@@ -16,8 +16,9 @@ var shellName string
 var rootCmd = &cobra.Command{
 	Use:   "selever",
 	Short: "Install exact toolchains and packages",
-	Long: `selever installs exact Node.js, Go, npm package, and Go package versions
-in immutable directories and prints shell environment updates.`,
+	Long: `selever installs exact Node.js, Go, npm package, Go package, MSVC, and
+Windows SDK versions in immutable directories and prints shell environment
+updates.`,
 	SilenceUsage: true,
 	Version:      config.Version,
 }
@@ -34,7 +35,14 @@ func init() {
 	rootCmd.AddCommand(npmCmd)
 	rootCmd.AddCommand(goCmd)
 	rootCmd.AddCommand(gopkgCmd)
+	rootCmd.AddCommand(msvcCmd)
+	rootCmd.AddCommand(winsdkCmd)
 	rootCmd.AddCommand(batchCmd)
+}
+
+// printEnv writes env in the --shell format.
+func printEnv(env *shell.Env) {
+	fmt.Print(shell.FormatEnv(resolvedShell(), env))
 }
 
 // resolvedShell returns the canonical shell name or exits on invalid input.
