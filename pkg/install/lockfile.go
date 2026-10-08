@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"time"
 )
 
@@ -57,17 +56,4 @@ func (l *Lockfile) Release() error {
 // LockPath is the conventional path for a lock file alongside a data file.
 func LockPath(dataPath string) string {
 	return dataPath + ".lock"
-}
-
-// readPid reads a PID from a lock file.
-func readPid(path string) (int, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, err
-	}
-	pid, err := strconv.Atoi(string(data))
-	if err != nil {
-		return 0, err
-	}
-	return pid, nil
 }

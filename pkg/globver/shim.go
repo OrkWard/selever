@@ -3,7 +3,6 @@ package globver
 import (
 	"os"
 	"path/filepath"
-	"sort"
 )
 
 const shimMarker = "# globver-managed"
@@ -35,12 +34,3 @@ type ShimSpec struct {
 	Script     string   // absolute script path, passed to the interpreter
 }
 
-// ExeNames returns the sorted list of executable names from the config.
-func ExeNames(cfg Config) []string {
-	var names []string
-	for k := range cfg {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
-}

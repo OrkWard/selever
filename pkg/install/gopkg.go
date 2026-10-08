@@ -9,19 +9,6 @@ import (
 	"strings"
 )
 
-// GopkgInstalled checks whether a Go package is already installed.
-func GopkgInstalled(pkg, pkgVersion string) (string, bool) {
-	p, err := ResolvePaths()
-	if err != nil {
-		return "", false
-	}
-	dir := gopkgInstallDir(p, pkg, pkgVersion)
-	if _, err := os.Stat(dir); err == nil {
-		return dir, true
-	}
-	return dir, false
-}
-
 // InstallGopkg builds and installs a Go package using a specific Go version.
 // Returns the install directory and the bin directory path.
 func InstallGopkg(ctx context.Context, pkg, pkgVersion, goVersion string) (installDir, binDir string, err error) {

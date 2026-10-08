@@ -9,19 +9,6 @@ import (
 	"runtime"
 )
 
-// NpmInstalled checks whether an npm package is already installed.
-func NpmInstalled(pkg, pkgVersion string) (string, bool) {
-	p, err := ResolvePaths()
-	if err != nil {
-		return "", false
-	}
-	dir := npmInstallDir(p, pkg, pkgVersion)
-	if _, err := os.Stat(dir); err == nil {
-		return dir, true
-	}
-	return dir, false
-}
-
 // InstallNpm installs an npm package using a specific Node.js version.
 // Returns the install directory and the bin directory path.
 func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (installDir, binDir string, err error) {

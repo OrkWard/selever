@@ -58,15 +58,6 @@ func RemoveShim(exeName string) error {
 	return os.Remove(target)
 }
 
-// IsShim returns true if the file at path is a globver-managed shim.
-func IsShim(path string) bool {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	return bytes.Contains(data, []byte(shimMarker))
-}
-
 // buildShim constructs a POSIX sh launcher script.
 func buildShim(exeName string, spec ShimSpec) []byte {
 	var b bytes.Buffer
