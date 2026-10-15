@@ -16,6 +16,12 @@ globver \- expose Selever-managed executables in the user's bin directory
 .I package[@version]
 .RI [ \-\-go= version ]
 .br
+.B globver use zig
+.I version
+.br
+.B globver use zls
+.I version
+.br
 .B globver use dotnet
 .I package[@version]
 .br
@@ -28,6 +34,10 @@ globver \- expose Selever-managed executables in the user's bin directory
 .br
 .B globver remove gopkg
 .I package
+.br
+.B globver remove zig
+.br
+.B globver remove zls
 .br
 .B globver remove dotnet
 .I package
@@ -82,6 +92,16 @@ The package version may be any Go module version query and defaults to
 .BR latest .
 The Go version must be exact.
 .TP
+.BI "use zig " version
+Expose
+.B zig
+from an exact Zig release.
+.TP
+.BI "use zls " version
+Expose
+.B zls
+from an exact tagged ZLS release.
+.TP
 .BI "use dotnet " package[@version]
 Expose every command provided by a dotnet tool package.
 The version may be
@@ -126,12 +146,18 @@ Remove the recorded Go selection.
 .BI "remove gopkg " package
 Remove the recorded Go package selection.
 .TP
+.B remove zig
+Remove the recorded Zig selection.
+.TP
+.B remove zls
+Remove the recorded ZLS selection.
+.TP
 .BI "remove dotnet " package
 Remove the recorded dotnet tool selection and uninstall the global dotnet tool.
 The package name is matched without regard to case.
 .PP
-Installed Selever data is retained when a Node.js, npm, Go, or Go package
-selection is removed.
+Installed Selever data is retained when a Node.js, npm, Go, Go package, Zig,
+or ZLS selection is removed.
 .SH OTHER COMMANDS
 .TP
 .B list
@@ -269,7 +295,7 @@ Remove every launcher owned by the TypeScript selection:
 globver remove npm typescript
 .EE
 .SH NOTES
-Node.js and Go archives are checksum-verified.
+Node.js, Go, Zig, and ZLS archives are checksum-verified.
 npm retains its native integrity and lifecycle behavior.
 Dotnet packages are managed in the dotnet global tool store; Globver manages
 launchers for their commands.

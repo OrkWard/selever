@@ -53,6 +53,20 @@ var (
 		Run:   runUseGopkg,
 	}
 
+	useZigCmd = &cobra.Command{
+		Use:   "zig <version>",
+		Short: "Install an exact Zig release and expose zig",
+		Args:  cobra.ExactArgs(1),
+		Run:   func(cmd *cobra.Command, args []string) { runUseZigStyle("zig", args[0]) },
+	}
+
+	useZlsCmd = &cobra.Command{
+		Use:   "zls <version>",
+		Short: "Install an exact ZLS release and expose zls",
+		Args:  cobra.ExactArgs(1),
+		Run:   func(cmd *cobra.Command, args []string) { runUseZigStyle("zls", args[0]) },
+	}
+
 	useNpmNode string
 	useGopkgGo string
 )
@@ -65,6 +79,8 @@ func init() {
 	useCmd.AddCommand(useGoCmd)
 	useCmd.AddCommand(useNpmCmd)
 	useCmd.AddCommand(useGopkgCmd)
+	useCmd.AddCommand(useZigCmd)
+	useCmd.AddCommand(useZlsCmd)
 }
 
 func runUseNode(cmd *cobra.Command, args []string) {
@@ -130,6 +146,34 @@ func runUseGo(cmd *cobra.Command, args []string) {
 	}
 
 	printUseResult(selector, version, exes, true)
+}
+
+// runUseZigStyle exposes the single executable of a Zig or ZLS release.
+// The installation root also holds LICENSE and README.md, so the directory
+// is not listed.
+func runUseZigStyle(tool, version string) {
+	dir, err := installZigStyle(context.Background(), tool, version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "globver use %s: %v\n", tool, err)
+		os.Exit(1)
+	}
+
+	exes := []string{tool}
+	selector := []string{tool, version}
+	if err := registerAndShim(exes, selector, toolchainSpec(install.ToolBinDir(tool, dir))); err != nil {
+		fmt.Fprintf(os.Stderr, "globver use %s: %v\n", tool, err)
+		os.Exit(1)
+	}
+
+	printUseResult(selector, version, exes, true)
+}
+
+// installZigStyle installs an exact Zig or ZLS release.
+func installZigStyle(ctx context.Context, tool, version string) (string, error) {
+	if tool == "zls" {
+		return install.InstallZls(ctx, version)
+	}
+	return install.InstallZig(ctx, version)
 }
 
 func runUseNpm(cmd *cobra.Command, args []string) {
@@ -353,7 +397,7 @@ func resolveSelector(sel []string, resolved string) []string {
 	}
 
 	switch sel[0] {
-	case "node", "go":
+	case "node", "go", "zig", "zls":
 		// sel[1] is the version directly.
 		out[1] = resolved
 	case "npm", "gopkg":

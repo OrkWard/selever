@@ -19,6 +19,8 @@ func init() {
 	removeCmd.AddCommand(removeNpmCmd)
 	removeCmd.AddCommand(removeGoCmd)
 	removeCmd.AddCommand(removeGopkgCmd)
+	removeCmd.AddCommand(removeZigCmd)
+	removeCmd.AddCommand(removeZlsCmd)
 	removeCmd.AddCommand(removeDotnetCmd)
 }
 
@@ -48,6 +50,20 @@ var removeGopkgCmd = &cobra.Command{
 	Short: "Remove a recorded Go package selection",
 	Args:  cobra.ExactArgs(1),
 	Run:   func(cmd *cobra.Command, args []string) { removeByTool("gopkg", args[0]) },
+}
+
+var removeZigCmd = &cobra.Command{
+	Use:   "zig",
+	Short: "Remove the recorded Zig selection",
+	Args:  cobra.NoArgs,
+	Run:   func(cmd *cobra.Command, args []string) { removeByTool("zig", "") },
+}
+
+var removeZlsCmd = &cobra.Command{
+	Use:   "zls",
+	Short: "Remove the recorded ZLS selection",
+	Args:  cobra.NoArgs,
+	Run:   func(cmd *cobra.Command, args []string) { removeByTool("zls", "") },
 }
 
 var removeDotnetCmd = &cobra.Command{

@@ -84,6 +84,10 @@ func installSelection(ctx context.Context, sel []string) (specFunc, error) {
 		dir, err := install.InstallGo(ctx, sel[1])
 		return toolchainSpec(install.ToolBinDir("go", dir)), err
 
+	case "zig", "zls":
+		dir, err := installZigStyle(ctx, tool, sel[1])
+		return toolchainSpec(install.ToolBinDir(tool, dir)), err
+
 	case "npm":
 		// sel = ["npm", "pkg@ver", "--node", "ver"]
 		spec := sel[1]
