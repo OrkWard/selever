@@ -16,8 +16,8 @@ var shellName string
 var rootCmd = &cobra.Command{
 	Use:   "selever",
 	Short: "Install exact toolchains and packages",
-	Long: `selever installs exact Node.js, Go, npm package, Go package, MSVC, and
-Windows SDK versions in immutable directories and prints shell environment
+	Long: `selever installs exact Node.js, Go, Zig, ZLS, npm package, Go package,
+MSVC, and Windows SDK versions in immutable directories and prints shell environment
 updates.`,
 	SilenceUsage: true,
 	Version:      config.Version,
@@ -35,6 +35,8 @@ func init() {
 	rootCmd.AddCommand(npmCmd)
 	rootCmd.AddCommand(goCmd)
 	rootCmd.AddCommand(gopkgCmd)
+	rootCmd.AddCommand(zigCmd)
+	rootCmd.AddCommand(zlsCmd)
 	rootCmd.AddCommand(msvcCmd)
 	rootCmd.AddCommand(winsdkCmd)
 	rootCmd.AddCommand(batchCmd)

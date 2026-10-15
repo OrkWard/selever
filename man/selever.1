@@ -26,6 +26,16 @@ selever \- install an exact toolchain or package and print its shell environment
 .br
 .B selever
 .RI [ \-\-shell= shell ]
+.B zig
+.I version
+.br
+.B selever
+.RI [ \-\-shell= shell ]
+.B zls
+.I version
+.br
+.B selever
+.RI [ \-\-shell= shell ]
 .B msvc
 .I version
 .RB [ \-\-host=\fIarch\fR ]
@@ -78,6 +88,16 @@ Build and install an exact Go package using the specified exact Go release.
 A leading
 .B v
 on the module version is optional.
+.TP
+.BI "zig " version
+Install an exact Zig release listed in
+.IR https://ziglang.org/download/index.json .
+A development version is available only while it is the current master build.
+.TP
+.BI "zls " version
+Install an exact tagged ZLS release listed in
+.IR https://releases.zigtools.org/v1/zls/index.json .
+A ZLS release supports the Zig releases with the same major and minor version.
 .TP
 .BI "msvc " version
 Install an exact MSVC toolset (Windows only).
@@ -162,6 +182,8 @@ reads one selector per line: a
 .BR npm ,
 .BR go ,
 .BR gopkg ,
+.BR zig ,
+.BR zls ,
 .BR msvc ,
 or
 .B winsdk
@@ -196,6 +218,15 @@ so the MSVC headers come first in
 selever batch <<'EOF'
 msvc --target=x86 14.44.17.14
 winsdk --target=x86 26100
+EOF
+.EE
+.PP
+Install Zig and the matching ZLS:
+.PP
+.EX
+selever batch <<'EOF'
+zig 0.15.2
+zls 0.15.1
 EOF
 .EE
 .SH OUTPUT
@@ -285,7 +316,7 @@ $"msvc (fetchver msvc latest)\\nwinsdk (fetchver winsdk latest)\\n"
 | selever batch | from json | load-env
 .EE
 .SH NOTES
-Node.js and Go archives and MSVC and Windows SDK payloads are
+Node.js, Go, Zig, and ZLS archives and MSVC and Windows SDK payloads are
 checksum-verified.
 MSVC and the Windows SDK are downloaded from the Visual Studio 2026 stable
 channel manifest, which also lists the Visual Studio 2019 and 2022 toolsets.
@@ -296,7 +327,8 @@ Installations are completed in a staging directory and moved into place
 atomically while holding an exclusive lock for the installation identity.
 .PP
 Supported platforms are macOS, glibc Linux, and Windows on amd64 and arm64.
-On Windows, Node.js executables are in the installation root rather than
+Zig and ZLS executables, and Node.js executables on Windows, are in the
+installation root rather than
 .IR bin ,
 and
 .B HOME

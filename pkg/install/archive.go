@@ -14,14 +14,26 @@ import (
 	"strings"
 
 	"github.com/cavaliergopher/grab/v3"
+	"github.com/ulikunitz/xz"
 )
 
 // FetchExtract downloads url to cacheDir, optionally verifies the SHA256
 // checksum, extracts the archive (tar.gz, tar.xz, or zip) into a staging
 // directory, and atomically renames it to destDir.
 //
+// The archive's single top-level directory is stripped.
 // Progress is written to stderr.
 func FetchExtract(ctx context.Context, url, cacheDir, destDir, sha256sum string) error {
+	return fetchExtract(ctx, url, cacheDir, destDir, sha256sum, true)
+}
+
+// FetchExtractFlat is FetchExtract for archives without a top-level
+// directory.
+func FetchExtractFlat(ctx context.Context, url, cacheDir, destDir, sha256sum string) error {
+	return fetchExtract(ctx, url, cacheDir, destDir, sha256sum, false)
+}
+
+func fetchExtract(ctx context.Context, url, cacheDir, destDir, sha256sum string, strip bool) error {
 	// 1. Download
 	archivePath, err := download(ctx, url, cacheDir)
 	if err != nil {
@@ -41,7 +53,7 @@ func FetchExtract(ctx context.Context, url, cacheDir, destDir, sha256sum string)
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		return err
 	}
-	if err := extract(archivePath, staging); err != nil {
+	if err := extract(archivePath, staging, strip); err != nil {
 		os.RemoveAll(staging)
 		return fmt.Errorf("extract: %w", err)
 	}
@@ -98,18 +110,26 @@ func verifySHA256(path, expected string) error {
 	return nil
 }
 
-// extract extracts a tar.gz, tar.xz, or zip archive into dest.
-func extract(archivePath, dest string) error {
+// extract extracts a tar.gz, tar.xz, or zip archive into dest, stripping the
+// top-level directory when strip is set.
+func extract(archivePath, dest string, strip bool) error {
 	switch {
 	case strings.HasSuffix(archivePath, ".zip"):
-		return extractZip(archivePath, dest)
+		return extractZip(archivePath, dest, strip)
 	default:
-		// .tar.gz, .tar.xz (stdlib handles gzip; xz via external or no compression)
-		return extractTar(archivePath, dest)
+		return extractTar(archivePath, dest, strip)
 	}
 }
 
-func extractTar(archivePath, dest string) error {
+// entryPath maps an archive entry name to its path relative to dest.
+func entryPath(name string, strip bool) string {
+	if strip {
+		return stripTopDir(name)
+	}
+	return name
+}
+
+func extractTar(archivePath, dest string, strip bool) error {
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -126,6 +146,12 @@ func extractTar(archivePath, dest string) error {
 		}
 		defer gz.Close()
 		r = gz
+	} else if strings.HasSuffix(archivePath, ".xz") {
+		xr, err := xz.NewReader(f)
+		if err != nil {
+			return err
+		}
+		r = xr
 	}
 
 	tr := tar.NewReader(r)
@@ -139,7 +165,7 @@ func extractTar(archivePath, dest string) error {
 		}
 
 		// Strip the top-level directory name (e.g. "node-v22.14.0-linux-x64/")
-		rel := stripTopDir(hdr.Name)
+		rel := entryPath(hdr.Name, strip)
 
 		target := filepath.Join(dest, rel)
 
@@ -168,7 +194,7 @@ func extractTar(archivePath, dest string) error {
 	return nil
 }
 
-func extractZip(archivePath, dest string) error {
+func extractZip(archivePath, dest string, strip bool) error {
 	r, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return err
@@ -176,7 +202,7 @@ func extractZip(archivePath, dest string) error {
 	defer r.Close()
 
 	for _, f := range r.File {
-		rel := stripTopDir(f.Name)
+		rel := entryPath(f.Name, strip)
 		target := filepath.Join(dest, rel)
 
 		if f.FileInfo().IsDir() {

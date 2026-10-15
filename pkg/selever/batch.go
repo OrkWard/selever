@@ -74,6 +74,18 @@ func processBatchLine(ctx context.Context, line string) (*shell.Env, error) {
 		}
 		return selectGo(ctx, flags.Arg(0))
 
+	case "zig":
+		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 {
+			return nil, fmt.Errorf("zig selector requires exactly a version")
+		}
+		return selectZig(ctx, flags.Arg(0))
+
+	case "zls":
+		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 {
+			return nil, fmt.Errorf("zls selector requires exactly a version")
+		}
+		return selectZls(ctx, flags.Arg(0))
+
 	case "npm":
 		node := flags.String("node", "", "")
 		if err := flags.Parse(fields[1:]); err != nil || flags.NArg() != 1 || *node == "" {

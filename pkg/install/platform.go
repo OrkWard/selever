@@ -57,6 +57,25 @@ func goPlatform() string {
 	}
 }
 
+// ZigPlatform returns the platform key used by the Zig and ZLS release
+// indexes, e.g. "x86_64-windows".
+func ZigPlatform() string {
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		arch = "x86_64"
+	case "arm64":
+		arch = "aarch64"
+	case "386":
+		arch = "x86"
+	}
+	platform := runtime.GOOS
+	if platform == "darwin" {
+		platform = "macos"
+	}
+	return arch + "-" + platform
+}
+
 // archiveExt is the extension of Node.js and Go release archives.
 func archiveExt() string {
 	if runtime.GOOS == "windows" {
@@ -74,9 +93,13 @@ func ExeName(name string) string {
 }
 
 // ToolBinDir returns the executable directory inside a toolchain
-// installation. Node.js on Windows ships its executables at the archive root.
+// installation. Zig, ZLS, and Node.js on Windows ship their executables at the
+// archive root.
 func ToolBinDir(tool, installDir string) string {
-	if tool == "node" && runtime.GOOS == "windows" {
+	switch {
+	case tool == "zig", tool == "zls":
+		return installDir
+	case tool == "node" && runtime.GOOS == "windows":
 		return installDir
 	}
 	return filepath.Join(installDir, "bin")
