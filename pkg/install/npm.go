@@ -26,7 +26,10 @@ func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (insta
 	installDir = npmInstallDir(p, pkg, pkgVersion)
 	binDir = filepath.Join(installDir, "node_modules", ".bin")
 
-	if _, err := os.Stat(binDir); err == nil {
+	// installDir only exists once an install finished, see the rename below.
+	// Checking it rather than binDir also covers packages without any
+	// executables, whose node_modules/.bin is never created.
+	if _, err := os.Stat(installDir); err == nil {
 		return installDir, binDir, nil
 	}
 
@@ -37,16 +40,22 @@ func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (insta
 	defer lock.Release()
 
 	// Double-check after acquiring lock.
-	if _, err := os.Stat(binDir); err == nil {
+	if _, err := os.Stat(installDir); err == nil {
 		return installDir, binDir, nil
 	}
 
+	// Install into a staging directory and rename it into place on success,
+	// so an interrupted install cannot leave a partial installDir that the
+	// check above would mistake for a finished one.
+	staging := installDir + ".staging"
+	os.RemoveAll(staging) // discard a previous crashed attempt
+
 	// Create a minimal package.json so npm doesn't walk up the tree.
-	if err := os.MkdirAll(installDir, 0o755); err != nil {
+	if err := os.MkdirAll(staging, 0o755); err != nil {
 		return "", "", err
 	}
 
-	pkgJSON := filepath.Join(installDir, "package.json")
+	pkgJSON := filepath.Join(staging, "package.json")
 	if err := os.WriteFile(pkgJSON, []byte(`{"private":true}`+"\n"), 0o644); err != nil {
 		return "", "", err
 	}
@@ -57,7 +66,7 @@ func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (insta
 
 	spec := pkg + "@" + pkgVersion
 
-	npmArgs := []string{"install", "--no-save", "--prefix", installDir, spec}
+	npmArgs := []string{"install", "--no-save", "--prefix", staging, spec}
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		// Run npm's entry script with the pinned node.exe instead of npm.cmd,
@@ -73,13 +82,18 @@ func InstallNpm(ctx context.Context, pkg, pkgVersion, nodeVersion string) (insta
 
 	fmt.Fprintf(os.Stderr, "Installing %s with Node.js %s\n", spec, nodeVersion)
 	if err := cmd.Run(); err != nil {
-		os.RemoveAll(installDir)
+		os.RemoveAll(staging)
 		return "", "", fmt.Errorf("npm install: %w", err)
 	}
 
 	// Clean up package.json and lock file to keep the install dir minimal.
 	os.Remove(pkgJSON)
-	os.Remove(filepath.Join(installDir, "package-lock.json"))
+	os.Remove(filepath.Join(staging, "package-lock.json"))
+
+	if err := os.Rename(staging, installDir); err != nil {
+		os.RemoveAll(staging)
+		return "", "", fmt.Errorf("install: %w", err)
+	}
 
 	return installDir, binDir, nil
 }
