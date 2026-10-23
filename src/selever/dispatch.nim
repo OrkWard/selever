@@ -152,7 +152,10 @@ proc resolvePackageCommand(command, startDir: string,
       command & ": package is not installed: " & entry.tool & " " & pair.package)
 
   let packageDir = packageInstallDir(tool, packageVersion, parentVersion)
-  let executable = packageDir / entry.locator
+  var executable = packageDir / entry.locator
+  when defined(windows):
+    if not executable.isExecutableFile:
+      executable = executableIn(parentDir(executable), command)
   if not executable.isExecutableFile:
     raise newException(ValueError,
       command & ": package does not provide this command for the selected version")
