@@ -19,3 +19,5 @@
 *.swp
 *.swo
 *~
+nimble.develop
+nimble.paths
