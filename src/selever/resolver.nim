@@ -1,6 +1,6 @@
 import std/[algorithm, json, os, strutils]
 
-import ./[catalog, layout, transport]
+import ./[catalog, layout, processutil, transport]
 
 const
   NodeIndexUrl = "https://nodejs.org/dist/index.json"
@@ -25,14 +25,14 @@ proc runtimeExecutable*(tool: ToolId, root: string): string =
 
 proc runtimeComplete*(tool: ToolId, version: string): bool =
   let executable = runtimeExecutable(tool, runtimeInstallDir(tool, version))
-  executable.len > 0 and fileExists(executable)
+  executable.len > 0 and executable.isExecutableFile
 
 proc packageComplete*(tool: ToolId, version, parentVersion: string): bool =
   let binDir = packageInstallDir(tool, version, parentVersion) / "bin"
   if not dirExists(binDir):
     return false
-  for kind, unused in walkDir(binDir):
-    if kind in {pcFile, pcLinkToFile}:
+  for kind, path in walkDir(binDir):
+    if kind in {pcFile, pcLinkToFile} and path.isExecutableFile:
       return true
 
 proc resolvedLinkVersion(path, versionsRoot: string): string =

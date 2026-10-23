@@ -1,4 +1,15 @@
-import std/[osproc, strtabs]
+import std/[os, osproc, strtabs]
+
+when not defined(windows):
+  import std/posix
+
+proc isExecutableFile*(path: string): bool =
+  if not fileExists(path):
+    return false
+  when defined(windows):
+    true
+  else:
+    posix.access(path.cstring, X_OK) == 0
 
 proc runCommand*(command: string, arguments: openArray[string],
                  env: StringTableRef = nil): int =

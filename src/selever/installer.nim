@@ -318,18 +318,21 @@ proc installNpm(tool: ToolId, query, nodeVersion: string;
     if bins.len == 0:
       raise newException(ValueError, tool.package & " declares no executables")
     createNpmBinLinks(staging, packageDir, bins)
-    validatePackageCommands(tool, staging)
-
     removeFile(staging / "package.json")
     if fileExists(staging / "package-lock.json"):
       removeFile(staging / "package-lock.json")
     let destination = packageInstallDir(tool, actual, nodeVersion)
+    var nameMap = beginNameMapTransaction()
+    defer: nameMap.finishNameMapTransaction()
+    nameMap.reservePackageCommands(tool, staging)
     createDir(parentDir(destination))
     if dirExists(destination):
       removeDir(staging)
     else:
       moveDir(staging, destination)
+    nameMap.registerPackageCommands(tool)
     createPackageLink(tool, query, actual, nodeVersion)
+    nameMap.commitNameMapTransaction()
     return actual
   except CatchableError:
     removeDir(staging)
@@ -380,15 +383,18 @@ proc installGoPackage(tool: ToolId, query, goVersion: string;
           tool.package & " produced binaries from different module versions")
     if actual.len == 0:
       raise newException(ValueError, tool.package & " produced no executables")
-    validatePackageCommands(tool, staging)
-
     let destination = packageInstallDir(tool, actual, goVersion)
+    var nameMap = beginNameMapTransaction()
+    defer: nameMap.finishNameMapTransaction()
+    nameMap.reservePackageCommands(tool, staging)
     createDir(parentDir(destination))
     if dirExists(destination):
       removeDir(staging)
     else:
       moveDir(staging, destination)
+    nameMap.registerPackageCommands(tool)
     createPackageLink(tool, query, actual, goVersion)
+    nameMap.commitNameMapTransaction()
     return actual
   except CatchableError:
     removeDir(staging)

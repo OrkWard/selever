@@ -1,11 +1,18 @@
 import std/[algorithm, os, sequtils, sets, strutils]
 
-import ./[catalog, layout, lockfile]
+import ./[catalog, layout, lockfile, processutil]
 
-type NameMapEntry* = object
-  command*: string
-  tool*: string
-  locator*: string
+type
+  NameMapEntry* = object
+    command*: string
+    tool*: string
+    locator*: string
+
+  NameMapTransaction* = object
+    lock: InstallLock
+    original: seq[NameMapEntry]
+    active: bool
+    committed: bool
 
 const ReservedCommands = [
   "node", "npm", "npx", "corepack",
@@ -81,30 +88,17 @@ proc commandsInInstall(root: string): seq[string] =
   if not dirExists(binDir):
     return
   for kind, path in walkDir(binDir):
-    if kind notin {pcFile, pcLinkToFile}:
+    if kind notin {pcFile, pcLinkToFile} or not path.isExecutableFile:
       continue
-    var name = splitFile(path).name
+    let name =
+      when defined(windows): splitFile(path).name
+      else: splitPath(path).tail
     when defined(windows):
       let extension = splitFile(path).ext.toLowerAscii()
       if extension notin [".exe", ".cmd", ""]:
         continue
     if name.validCommand and name notin result:
       result.add name
-
-proc validatePackageCommands*(tool: ToolId, installRoot: string) =
-  let commands = commandsInInstall(installRoot)
-  if commands.len == 0:
-    raise newException(ValueError, tool.name & " provides no commands")
-  var lock = acquireInstallLock(dataRoot() / "name-map.lock")
-  defer: lock.release()
-  for command in commands:
-    if command in ReservedCommands:
-      raise newException(ValueError,
-        command & ": command is reserved by a built-in tool")
-    for entry in loadNameMap():
-      if entry.command == command and entry.tool != tool.name:
-        raise newException(ValueError,
-          command & ": command already belongs to " & entry.tool)
 
 proc installedPackageCommands(tool: ToolId): seq[string] =
   let root = packageRoot(tool)
@@ -123,30 +117,91 @@ proc installedPackageCommands(tool: ToolId): seq[string] =
         if command notin result:
           result.add command
 
-proc registerPackageCommands*(tool: ToolId) =
-  if not tool.isPackage:
-    raise newException(ValueError, "not a package: " & tool.name)
-  var lock = acquireInstallLock(dataRoot() / "name-map.lock")
-  defer: lock.release()
+proc beginNameMapTransaction*(): NameMapTransaction =
+  result.lock = acquireInstallLock(dataRoot() / "name-map.lock")
+  try:
+    result.original = loadNameMap()
+    result.active = true
+  except CatchableError:
+    result.lock.release()
+    raise
 
-  let commands = installedPackageCommands(tool)
-  let existing = loadNameMap()
-  var updated: seq[NameMapEntry]
-  for entry in existing:
-    if entry.tool == tool.name:
-      continue
-    if entry.command in commands:
-      raise newException(ValueError,
-        entry.command & ": command already belongs to " & entry.tool)
-    updated.add entry
+proc finishNameMapTransaction*(transaction: var NameMapTransaction) =
+  if not transaction.active:
+    return
+  try:
+    if not transaction.committed:
+      saveNameMap(transaction.original)
+  finally:
+    transaction.lock.release()
+    transaction.active = false
 
+proc commitNameMapTransaction*(transaction: var NameMapTransaction) =
+  if not transaction.active:
+    raise newException(ValueError, "name-map transaction is not active")
+  transaction.committed = true
+
+proc validateCommands(tool: ToolId, commands: openArray[string],
+                      existing: openArray[NameMapEntry]) =
+  if commands.len == 0:
+    raise newException(ValueError, tool.name & " provides no commands")
   for command in commands:
     if command in ReservedCommands:
       raise newException(ValueError,
         command & ": command is reserved by a built-in tool")
+    for entry in existing:
+      if entry.command == command and entry.tool != tool.name:
+        raise newException(ValueError,
+          command & ": command already belongs to " & entry.tool)
+
+proc reservePackageCommands*(transaction: var NameMapTransaction,
+                             tool: ToolId, installRoot: string) =
+  if not transaction.active:
+    raise newException(ValueError, "name-map transaction is not active")
+  let commands = commandsInInstall(installRoot)
+  let existing = loadNameMap()
+  validateCommands(tool, commands, existing)
+  var updated = existing
+  for command in commands:
+    var found = false
+    for entry in existing:
+      if entry.command == command:
+        found = true
+        break
+    if not found:
+      updated.add NameMapEntry(
+        command: command,
+        tool: tool.name,
+        locator: "bin/" & command,
+      )
+  saveNameMap(updated)
+
+proc registerPackageCommands*(transaction: var NameMapTransaction,
+                              tool: ToolId) =
+  if not transaction.active:
+    raise newException(ValueError, "name-map transaction is not active")
+  if not tool.isPackage:
+    raise newException(ValueError, "not a package: " & tool.name)
+
+  let commands = installedPackageCommands(tool)
+  let existing = loadNameMap()
+  validateCommands(tool, commands, existing)
+  var updated: seq[NameMapEntry]
+  for entry in existing:
+    if entry.tool == tool.name:
+      continue
+    updated.add entry
+
+  for command in commands:
     updated.add NameMapEntry(
       command: command,
       tool: tool.name,
       locator: "bin/" & command,
     )
   saveNameMap(updated)
+
+proc registerPackageCommands*(tool: ToolId) =
+  var transaction = beginNameMapTransaction()
+  defer: transaction.finishNameMapTransaction()
+  transaction.registerPackageCommands(tool)
+  transaction.commitNameMapTransaction()

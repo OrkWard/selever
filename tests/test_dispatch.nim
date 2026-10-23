@@ -2,9 +2,19 @@ import std/[os, tempfiles, unittest]
 
 import ../src/selever/[catalog, dispatch, layout, resolver]
 
+when not defined(windows):
+  import ../src/selever/namemap
+
 proc executableName(name: string): string =
   when defined(windows): name & ".exe"
   else: name
+
+proc writeExecutable(path: string; content = "") =
+  writeFile(path, content)
+  when not defined(windows):
+    var permissions = getFilePermissions(path)
+    permissions.incl fpUserExec
+    setFilePermissions(path, permissions)
 
 proc configureRoots(root: string) =
   putEnv("SELEVER_DATA_DIR", root / "data")
@@ -18,7 +28,7 @@ proc createRuntime(tool: ToolId, version: string): string =
   result = runtimeInstallDir(tool, version)
   let executable = runtimeExecutable(tool, result)
   createDir(parentDir(executable))
-  writeFile(executable, "")
+  writeExecutable(executable)
 
 suite "dispatcher":
   test "missing installation is an error":
@@ -62,7 +72,7 @@ suite "dispatcher":
     let packageRoot = packageInstallDir(tool, "5.9.3", "22.14.0")
     let script = packageRoot / "node_modules" / "typescript" / "bin" / "tsc"
     createDir(parentDir(script))
-    writeFile(script, "#!/usr/bin/env node\n")
+    writeExecutable(script, "#!/usr/bin/env node\n")
     createDir(packageRoot / "bin")
     createSymlink(relativePath(script, packageRoot / "bin"),
       packageRoot / "bin" / "tsc")
@@ -91,7 +101,7 @@ suite "dispatcher":
     let packageRoot = packageInstallDir(tool, "v1.0.0", "1.24.1")
     let executable = packageRoot / "bin" / executableName("gopls")
     createDir(parentDir(executable))
-    writeFile(executable, "")
+    writeExecutable(executable)
     createPackageLink(tool, "v1.0.0", "v1.0.0", "1.24.1")
     createDir(dataRoot())
     writeFile(nameMapPath(),
@@ -99,6 +109,49 @@ suite "dispatcher":
 
     let resolved = resolveCommand("gopls", root)
     check resolved.executable == executable
+
+  when not defined(windows):
+    test "preserves dots in Unix command names":
+      let root = createTempDir("selever-dotted-command-", "")
+      defer: removeDir(root)
+      defer: clearRoots()
+      configureRoots(root)
+      writeFile(root / ".tool-versions",
+        "gopkg:example.invalid/dotted 1.24:v1.0.0\n")
+
+      let goTool = parseToolId("golang")
+      discard createRuntime(goTool, "1.24.1")
+      createRuntimeLinks(goTool, "1.24", "1.24.1")
+
+      let tool = parseToolId("gopkg:example.invalid/dotted")
+      let packageRoot = packageInstallDir(tool, "v1.0.0", "1.24.1")
+      let executable = packageRoot / "bin" / "tool.js"
+      createDir(parentDir(executable))
+      writeExecutable(executable)
+      createPackageLink(tool, "v1.0.0", "v1.0.0", "1.24.1")
+      registerPackageCommands(tool)
+
+      check invocationName("/tmp/tool.js") == "tool.js"
+      check lookupName("tool.js").locator == "bin/tool.js"
+      check resolveCommand("tool.js", root).executable == executable
+
+    test "system selection skips non-executable PATH entries":
+      let root = createTempDir("selever-system-path-", "")
+      defer: removeDir(root)
+      defer: clearRoots()
+      configureRoots(root)
+      let first = root / "first"
+      let second = root / "second"
+      createDir(first)
+      createDir(second)
+      writeFile(first / "node", "")
+      writeExecutable(second / "node")
+      let oldPath = getEnv("PATH")
+      defer: putEnv("PATH", oldPath)
+      putEnv("PATH", first & $PathSep & second)
+      writeFile(root / ".tool-versions", "nodejs system\n")
+
+      check resolveCommand("node", root).executable == second / "node"
 
   test "path selection does not claim another tool command":
     let root = createTempDir("selever-dispatch-", "")

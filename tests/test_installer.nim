@@ -16,6 +16,13 @@ proc executableName(name: string): string =
   when defined(windows): name & ".exe"
   else: name
 
+proc writeExecutable(path: string; content = "") =
+  writeFile(path, content)
+  when not defined(windows):
+    var permissions = getFilePermissions(path)
+    permissions.incl fpUserExec
+    setFilePermissions(path, permissions)
+
 suite "installer":
   test "an existing runtime is reused without network":
     let root = createTempDir("selever-install-", "")
@@ -27,7 +34,7 @@ suite "installer":
     let install = runtimeInstallDir(tool, "0.0.0-test")
     let node = runtimeExecutable(tool, install)
     createDir(parentDir(node))
-    writeFile(node, "")
+    writeExecutable(node)
 
     let installed = installAll([
       ToolSelection(name: "nodejs", versions: @["0.0.0-test"]),
@@ -55,12 +62,12 @@ suite "installer":
     let nodeRoot = runtimeInstallDir(nodeTool, "22.14.0")
     let node = runtimeExecutable(nodeTool, nodeRoot)
     createDir(parentDir(node))
-    writeFile(node, "")
+    writeExecutable(node)
 
     let packageTool = parseToolId("npm:example")
     let packageRoot = packageInstallDir(packageTool, "1.0.0", "22.14.0")
     createDir(packageRoot / "bin")
-    writeFile(packageRoot / "bin" / "example", "")
+    writeExecutable(packageRoot / "bin" / "example")
     createPackageLink(packageTool, "1.0.0", "1.0.0", "22.14.0")
 
     let installed = installAll([
@@ -99,11 +106,84 @@ suite "installer":
     let install = runtimeInstallDir(tool, "22.14.0")
     let node = runtimeExecutable(tool, install)
     createDir(parentDir(node))
-    writeFile(node, "")
+    writeExecutable(node)
     createRuntimeLinks(tool, "lts/iron", "22.14.0")
     check resolveRuntimeLocal(tool, "22") == "22.14.0"
     check resolveRuntimeLocal(tool, "22.14") == "22.14.0"
     check resolveRuntimeLocal(tool, "lts/iron") == "22.14.0"
+
+  when not defined(windows):
+    test "runtime completeness requires execute permission":
+      let root = createTempDir("selever-runtime-mode-", "")
+      defer: removeDir(root)
+      putEnv("SELEVER_DATA_DIR", root / "data")
+      defer: delEnv("SELEVER_DATA_DIR")
+
+      let tool = parseToolId("nodejs")
+      let node = runtimeExecutable(tool, runtimeInstallDir(tool, "1.0.0"))
+      createDir(parentDir(node))
+      writeFile(node, "")
+      check not runtimeComplete(tool, "1.0.0")
+      writeExecutable(node)
+      check runtimeComplete(tool, "1.0.0")
+
+    test "name-map ignores non-executable package files":
+      let root = createTempDir("selever-package-mode-", "")
+      defer: removeDir(root)
+      putEnv("SELEVER_DATA_DIR", root / "data")
+      defer: delEnv("SELEVER_DATA_DIR")
+
+      let tool = parseToolId("gopkg:example.invalid/modes")
+      let bin = packageInstallDir(tool, "v1.0.0", "1.24.0") / "bin"
+      createDir(bin)
+      writeFile(bin / "disabled", "")
+      writeExecutable(bin / "enabled")
+      registerPackageCommands(tool)
+
+      check lookupName("disabled").command.len == 0
+      check lookupName("enabled").tool == tool.name
+
+  test "name-map reservation blocks takeover and permits recovery":
+    let root = createTempDir("selever-map-reservation-", "")
+    defer: removeDir(root)
+    putEnv("SELEVER_DATA_DIR", root / "data")
+    defer: delEnv("SELEVER_DATA_DIR")
+
+    let first = parseToolId("gopkg:example.invalid/one")
+    let firstStaging = root / "first-staging"
+    createDir(firstStaging / "bin")
+    writeExecutable(firstStaging / "bin" / "shared")
+
+    var rolledBack = beginNameMapTransaction()
+    rolledBack.reservePackageCommands(first, firstStaging)
+    rolledBack.finishNameMapTransaction()
+    check lookupName("shared").command.len == 0
+
+    var reserved = beginNameMapTransaction()
+    reserved.reservePackageCommands(first, firstStaging)
+    reserved.commitNameMapTransaction()
+    reserved.finishNameMapTransaction()
+    check lookupName("shared").tool == first.name
+
+    let second = parseToolId("gopkg:example.invalid/two")
+    let secondStaging = root / "second-staging"
+    createDir(secondStaging / "bin")
+    writeExecutable(secondStaging / "bin" / "shared")
+    var conflict = beginNameMapTransaction()
+    expect ValueError:
+      conflict.reservePackageCommands(second, secondStaging)
+    conflict.finishNameMapTransaction()
+
+    let installedBin =
+      packageInstallDir(first, "v1.0.0", "1.24.0") / "bin"
+    createDir(installedBin)
+    writeExecutable(installedBin / "shared")
+    var recovery = beginNameMapTransaction()
+    recovery.reservePackageCommands(first, firstStaging)
+    recovery.registerPackageCommands(first)
+    recovery.commitNameMapTransaction()
+    recovery.finishNameMapTransaction()
+    check lookupName("shared").tool == first.name
 
   test "name-map rejects command ownership conflicts":
     let root = createTempDir("selever-map-", "")
@@ -114,14 +194,14 @@ suite "installer":
     let first = parseToolId("gopkg:example.invalid/one")
     let firstBin = packageInstallDir(first, "v1.0.0", "1.24.0") / "bin"
     createDir(firstBin)
-    writeFile(firstBin / "shared", "")
+    writeExecutable(firstBin / "shared")
     registerPackageCommands(first)
     check lookupName("shared").tool == first.name
 
     let second = parseToolId("gopkg:example.invalid/two")
     let secondBin = packageInstallDir(second, "v1.0.0", "1.24.0") / "bin"
     createDir(secondBin)
-    writeFile(secondBin / "shared", "")
+    writeExecutable(secondBin / "shared")
     expect ValueError:
       registerPackageCommands(second)
 
@@ -136,8 +216,8 @@ suite "installer":
     let newBin = packageInstallDir(tool, "2.0.0", "22.0.0") / "bin"
     createDir(oldBin)
     createDir(newBin)
-    writeFile(oldBin / "old-command", "")
-    writeFile(newBin / "new-command", "")
+    writeExecutable(oldBin / "old-command")
+    writeExecutable(newBin / "new-command")
     registerPackageCommands(tool)
     check lookupName("old-command").tool == tool.name
     check lookupName("new-command").tool == tool.name
@@ -181,7 +261,7 @@ suite "installer":
     let install = runtimeInstallDir(tool, "0.0.0-test")
     let node = runtimeExecutable(tool, install)
     createDir(parentDir(node))
-    writeFile(node, "")
+    writeExecutable(node)
 
     let dispatcher = root / executableName("selever")
     writeFile(dispatcher, "dispatcher")

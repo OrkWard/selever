@@ -5,7 +5,7 @@ when defined(windows):
 else:
   import std/posix
 
-import ./[catalog, layout, namemap, resolver, toolversions]
+import ./[catalog, layout, namemap, processutil, resolver, toolversions]
 
 type
   ResolvedCommand* = object
@@ -14,15 +14,21 @@ type
     tool*: string
     version*: string
 
+proc invocationName*(path: string): string =
+  when defined(windows):
+    splitFile(path).name.toLowerAscii()
+  else:
+    splitPath(path).tail
+
 proc executableIn(directory, command: string): string =
   when defined(windows):
     for extension in [".exe", ".com"]:
       let candidate = directory / (command & extension)
-      if fileExists(candidate):
+      if candidate.isExecutableFile:
         return candidate
   else:
     let candidate = directory / command
-    if fileExists(candidate):
+    if candidate.isExecutableFile:
       return candidate
 
 proc isOwnDispatcher(path: string): bool =
@@ -66,7 +72,7 @@ proc installedBuiltin(tool: ToolId, version,
   if tool.kind == tkNodejs and command in ["npm", "npx", "corepack"]:
     let script = nodeScript(root, command)
     let node = runtimeExecutable(tool, root)
-    if fileExists(node) and fileExists(script):
+    if node.isExecutableFile and fileExists(script):
       return ResolvedCommand(
         executable: node,
         arguments: @[script],
@@ -147,7 +153,7 @@ proc resolvePackageCommand(command, startDir: string,
 
   let packageDir = packageInstallDir(tool, packageVersion, parentVersion)
   let executable = packageDir / entry.locator
-  if not fileExists(executable):
+  if not executable.isExecutableFile:
     raise newException(ValueError,
       command & ": package does not provide this command for the selected version")
 
