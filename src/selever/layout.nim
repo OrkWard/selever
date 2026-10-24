@@ -67,6 +67,7 @@ proc storageName*(tool: ToolId): string =
   case tool.kind
   of tkNodejs: "node"
   of tkGolang: "go"
+  of tkJava: "java"
   of tkZig: "zig"
   of tkZls: "zls"
   of tkNpm: "npm"
@@ -128,6 +129,8 @@ proc executableDirs*(tool: ToolId, version: string,
     else:
       result = @[root / "bin"]
   of tkGolang, tkGoPackage, tkNpm:
+    result = @[root / "bin"]
+  of tkJava:
     result = @[root / "bin"]
   of tkZig, tkZls:
     result = @[root]

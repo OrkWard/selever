@@ -5,6 +5,8 @@ import ./[catalog, layout, processutil, transport]
 const
   NodeIndexUrl = "https://nodejs.org/dist/index.json"
   GoIndexUrl = "https://go.dev/dl/?mode=json&include=all"
+  JavaApiBase* = "https://api.adoptium.net/v3"
+  JavaPageSize* = 50
   ZigIndexUrl* = "https://ziglang.org/download/index.json"
   ZlsIndexUrl* = "https://releases.zigtools.org/v1/zls/index.json"
 
@@ -16,6 +18,8 @@ proc runtimeExecutable*(tool: ToolId, root: string): string =
     else: root / "bin" / "node"
   of tkGolang:
     root / "bin" / ("go" & suffix)
+  of tkJava:
+    root / "bin" / ("java" & suffix)
   of tkZig:
     root / ("zig" & suffix)
   of tkZls:
@@ -24,8 +28,47 @@ proc runtimeExecutable*(tool: ToolId, root: string): string =
     ""
 
 proc runtimeComplete*(tool: ToolId, version: string): bool =
-  let executable = runtimeExecutable(tool, runtimeInstallDir(tool, version))
-  executable.len > 0 and executable.isExecutableFile
+  let root = runtimeInstallDir(tool, version)
+  let executable = runtimeExecutable(tool, root)
+  if executable.len == 0 or not executable.isExecutableFile:
+    return false
+  if tool.kind == tkJava:
+    let suffix = when defined(windows): ".exe" else: ""
+    return (root / "bin" / ("javac" & suffix)).isExecutableFile
+  true
+
+proc javaPlatform*(): string =
+  when defined(windows): "windows"
+  elif defined(macosx): "mac"
+  elif defined(linux): "linux"
+  else: raise newException(ValueError, "unsupported Java platform")
+
+proc javaArchitecture*(): string =
+  when hostCPU == "amd64": "x64"
+  elif hostCPU == "arm64": "aarch64"
+  else: raise newException(ValueError, "unsupported Java architecture: " & hostCPU)
+
+proc javaFeatureReleasesUrl*(feature, page: int): string =
+  JavaApiBase & "/assets/feature_releases/" & $feature & "/ga" &
+    "?architecture=" & javaArchitecture() &
+    "&heap_size=normal&image_type=jdk&jvm_impl=hotspot&os=" & javaPlatform() &
+    "&page=" & $page & "&page_size=" & $JavaPageSize &
+    "&project=jdk&sort_order=DESC&vendor=eclipse"
+
+proc javaVersion*(release: JsonNode): string =
+  let version =
+    if release.hasKey("version_data"): release["version_data"]
+    else: release["version"]
+  var parts = @[$version["major"].getInt()]
+  if version.hasKey("minor"):
+    parts.add $version["minor"].getInt()
+  if version.hasKey("security"):
+    parts.add $version["security"].getInt()
+  if version.hasKey("patch") and version["patch"].getInt() > 0:
+    parts.add $version["patch"].getInt()
+  result = parts.join(".")
+  if version.hasKey("build"):
+    result.add "+" & $version["build"].getInt()
 
 proc packageComplete*(tool: ToolId, version, parentVersion: string): bool =
   let binDir = packageInstallDir(tool, version, parentVersion) / "bin"
@@ -193,6 +236,44 @@ proc resolveGo(selector: string): string =
       return version
   raise newException(ValueError, "golang release not found: " & selector)
 
+proc normalizedJavaSelector(selector: string): string =
+  result = selector
+  for prefix in ["temurin-", "jdk-"]:
+    if result.startsWith(prefix):
+      result = result[prefix.len .. ^1]
+      break
+
+proc javaFeature(selector: string): int =
+  let lower = selector.toLowerAscii()
+  if lower in ["latest", "lts"]:
+    let info = parseJson(fetchText(JavaApiBase & "/info/available_releases"))
+    return info[
+      if lower == "lts": "most_recent_lts"
+      else: "most_recent_feature_release"
+    ].getInt()
+  let parts = numericParts(selector)
+  if parts.len == 0:
+    raise newException(ValueError, "invalid Java selector: " & selector)
+  parts[0]
+
+proc resolveJava(selector: string): string =
+  let normalized = normalizedJavaSelector(selector)
+  if normalized.contains('+'):
+    return normalized
+  let feature = javaFeature(normalized)
+  for page in 0 .. 99:
+    let releases = parseJson(fetchText(javaFeatureReleasesUrl(feature, page)))
+    if releases.len == 0:
+      break
+    for release in releases.items:
+      let version = javaVersion(release)
+      if normalized.toLowerAscii() in ["latest", "lts"] or
+          version.matchesNumericSelector(normalized):
+        return version
+    if releases.len < JavaPageSize:
+      break
+  raise newException(ValueError, "Java release not found: " & selector)
+
 proc resolveZigStyle(selector, indexUrl: string): string =
   if selector.isConcreteVersion:
     return selector
@@ -219,6 +300,8 @@ proc resolveInstallVersion*(tool: ToolId, selector: string): string =
     resolveNode(selector)
   of tkGolang:
     resolveGo(selector)
+  of tkJava:
+    resolveJava(selector)
   of tkZig:
     resolveZigStyle(selector, ZigIndexUrl)
   of tkZls:

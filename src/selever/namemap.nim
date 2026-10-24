@@ -146,7 +146,7 @@ proc validateCommands(tool: ToolId, commands: openArray[string],
   if commands.len == 0:
     raise newException(ValueError, tool.name & " provides no commands")
   for command in commands:
-    if command in ReservedCommands:
+    if command in ReservedCommands or command in JavaCommands:
       raise newException(ValueError,
         command & ": command is reserved by a built-in tool")
     for entry in existing:

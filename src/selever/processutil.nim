@@ -3,6 +3,18 @@ import std/[os, osproc, strtabs]
 when not defined(windows):
   import std/posix
 
+proc currentEnvironment*(): StringTableRef =
+  when defined(windows):
+    result = newStringTable(modeCaseInsensitive)
+  else:
+    result = newStringTable(modeCaseSensitive)
+  for key, value in envPairs():
+    result[key] = value
+
+proc environmentWith*(key, value: string): StringTableRef =
+  result = currentEnvironment()
+  result[key] = value
+
 proc isExecutableFile*(path: string): bool =
   if not fileExists(path):
     return false

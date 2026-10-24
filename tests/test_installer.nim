@@ -1,4 +1,4 @@
-import std/[os, strutils, tempfiles, unittest]
+import std/[json, os, strutils, tempfiles, unittest]
 
 import ../src/selever/[
   catalog,
@@ -41,6 +41,38 @@ suite "installer":
     ])
     check installed.len == 1
     check installed[0].version == "0.0.0-test"
+
+  test "an existing JDK is reused without network":
+    let root = createTempDir("selever-java-install-", "")
+    defer: removeDir(root)
+    putEnv("SELEVER_DATA_DIR", root / "data")
+    defer: delEnv("SELEVER_DATA_DIR")
+
+    let tool = parseToolId("java")
+    let version = "21.0.8+9"
+    let install = runtimeInstallDir(tool, version)
+    let suffix = when defined(windows): ".exe" else: ""
+    createDir(install / "bin")
+    writeExecutable(install / "bin" / ("java" & suffix))
+    writeExecutable(install / "bin" / ("javac" & suffix))
+
+    let installed = installAll([
+      ToolSelection(name: "java", versions: @[version]),
+    ])
+    check installed.len == 1
+    check installed[0].version == version
+
+  test "Adoptium metadata has a stable concrete version":
+    let featureRelease = parseJson("""
+      {"version_data":{"major":25,"minor":0,"security":4,"patch":1,"build":1}}
+    """)
+    let latestRelease = parseJson("""
+      {"version":{"major":21,"minor":0,"security":8,"build":9}}
+    """)
+    check javaVersion(featureRelease) == "25.0.4.1+1"
+    check javaVersion(latestRelease) == "21.0.8+9"
+    check resolveInstallVersion(
+      parseToolId("java"), "temurin-21.0.8+9") == "21.0.8+9"
 
   test "a package requires exactly one explicit pair":
     expect ValueError:
@@ -142,6 +174,19 @@ suite "installer":
 
       check lookupName("disabled").command.len == 0
       check lookupName("enabled").tool == tool.name
+
+  test "name-map rejects Java command ownership":
+    let root = createTempDir("selever-java-map-", "")
+    defer: removeDir(root)
+    putEnv("SELEVER_DATA_DIR", root / "data")
+    defer: delEnv("SELEVER_DATA_DIR")
+
+    let tool = parseToolId("npm:example")
+    let bin = packageInstallDir(tool, "1.0.0", "22.0.0") / "bin"
+    createDir(bin)
+    writeExecutable(bin / "javac")
+    expect ValueError:
+      registerPackageCommands(tool)
 
   test "name-map reservation blocks takeover and permits recovery":
     let root = createTempDir("selever-map-reservation-", "")
@@ -245,6 +290,35 @@ suite "installer":
     verifySha256(path, expected)
     expect ValueError:
       verifySha256(path, repeat('0', 64))
+
+  test "sync creates Java shims from installed JDK commands":
+    let root = createTempDir("selever-java-shims-", "")
+    defer: removeDir(root)
+    putEnv("SELEVER_DATA_DIR", root / "data")
+    putEnv("SELEVER_CONFIG_DIR", root / "config")
+    putEnv("SELEVER_SHIMS_DIR", root / "shims")
+    defer:
+      delEnv("SELEVER_DATA_DIR")
+      delEnv("SELEVER_CONFIG_DIR")
+      delEnv("SELEVER_SHIMS_DIR")
+
+    let tool = parseToolId("java")
+    let version = "21.0.8+9"
+    let install = runtimeInstallDir(tool, version)
+    let suffix = when defined(windows): ".exe" else: ""
+    createDir(install / "bin")
+    writeExecutable(install / "bin" / ("java" & suffix))
+    writeExecutable(install / "bin" / ("javac" & suffix))
+
+    let dispatcher = root / executableName("selever")
+    writeFile(dispatcher, "dispatcher")
+    syncShims([
+      InstalledSelection(tool: tool, request: "21", version: version),
+    ], dispatcher)
+    for command in ["java", "javac"]:
+      let shim = shimDir() / executableName(command)
+      check fileExists(shim)
+      check sameFile(dispatcher, shim)
 
   test "sync creates a native dispatcher shim":
     let root = createTempDir("selever-shims-", "")

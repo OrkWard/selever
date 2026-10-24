@@ -79,9 +79,12 @@ proc verifiedDownload*(url, destination, expected: string) =
       if attempt == 1:
         raise
 
-proc extractArchive*(archive, destination: string; stripTopDir: bool) =
+proc extractArchive*(archive, destination: string; stripTopDir: bool;
+                     nestedRoot = "") =
   let staging = destination & ".staging"
+  let publication = destination & ".publication"
   removeDir(staging)
+  removeDir(publication)
   createDir(staging)
   var arguments = @["-xf", archive, "-C", staging]
   if stripTopDir:
@@ -91,7 +94,17 @@ proc extractArchive*(archive, destination: string; stripTopDir: bool) =
     if dirExists(destination):
       removeDir(staging)
       return
-    moveDir(staging, destination)
+    if nestedRoot.len > 0:
+      let nested = staging / nestedRoot
+      if not dirExists(nested):
+        raise newException(ValueError,
+          "archive does not contain expected directory: " & nestedRoot)
+      moveDir(nested, publication)
+      removeDir(staging)
+      moveDir(publication, destination)
+    else:
+      moveDir(staging, destination)
   except CatchableError:
     removeDir(staging)
+    removeDir(publication)
     raise

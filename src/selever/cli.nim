@@ -1,6 +1,6 @@
 import std/[os, sets, strutils]
 
-import ./[catalog, installer, resolver, shims, toolversions]
+import ./[catalog, dispatch, installer, processutil, resolver, shims, toolversions]
 
 proc usage(): string =
   """Usage:
@@ -8,9 +8,11 @@ proc usage(): string =
   selever update  [-n|--dry-run]
   selever list
   selever ls
+  selever exec -- <command> [arguments...]
 
 Install reuses complete local selectors. Update refreshes mutable selectors.
-Shim execution never installs or accesses the network."""
+Shim execution never installs or accesses the network.
+Exec only sets JAVA_HOME for the selected JDK."""
 
 proc parseDryRun(arguments: seq[string]): bool =
   if arguments.len == 0:
@@ -31,6 +33,19 @@ proc applyVisible(mode: InstallMode, dryRun: bool): int =
   if not dryRun:
     syncShims(installed)
   0
+
+proc execWithJava(arguments: seq[string]): int =
+  if arguments.len < 2 or arguments[0] != "--":
+    raise newException(ValueError,
+      "expected exec -- <command> [arguments...]")
+  let commandArguments =
+    if arguments.len > 2: arguments[2 .. ^1]
+    else: @[]
+  runCommand(
+    arguments[1],
+    commandArguments,
+    environmentWith("JAVA_HOME", resolveJavaHome(getCurrentDir())),
+  )
 
 proc selectionStatus(selection: ToolSelection): string =
   let tool = parseToolId(selection.name)
@@ -110,6 +125,8 @@ proc runCli*(arguments: seq[string]): int =
       if arguments.len != 1:
         raise newException(ValueError, "list accepts no arguments")
       return listVisible()
+    of "exec":
+      return execWithJava(arguments[1 .. ^1])
     of "-h", "--help":
       if arguments.len != 1:
         raise newException(ValueError, "help accepts no arguments")

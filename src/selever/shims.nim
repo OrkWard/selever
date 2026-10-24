@@ -1,6 +1,6 @@
 import std/[algorithm, json, os, sets, strutils]
 
-import ./[catalog, installer, layout, lockfile, namemap]
+import ./[catalog, installer, layout, lockfile, namemap, processutil]
 
 proc runtimeCommands(installed: InstalledSelection): seq[string] =
   let root = runtimeInstallDir(installed.tool, installed.version)
@@ -19,6 +19,14 @@ proc runtimeCommands(installed: InstalledSelection): seq[string] =
       result.add "corepack"
   of tkGolang:
     result.add ["go", "gofmt"]
+  of tkJava:
+    if installed.version == "system" or installed.version.startsWith("path:"):
+      result.add JavaCommands
+      return
+    let suffix = when defined(windows): ".exe" else: ""
+    for command in JavaCommands:
+      if (root / "bin" / (command & suffix)).isExecutableFile:
+        result.add command
   of tkZig:
     result.add "zig"
   of tkZls:

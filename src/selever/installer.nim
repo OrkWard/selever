@@ -92,14 +92,15 @@ proc checksumFromLines(content, archiveName: string): string =
   raise newException(ValueError, "checksum not found for " & archiveName)
 
 proc installArchive(tool: ToolId, version, url, archiveName,
-                    checksum: string; stripTopDir: bool): string =
+                    checksum: string; stripTopDir: bool;
+                    nestedRoot = ""): string =
   result = runtimeInstallDir(tool, version)
   if runtimeComplete(tool, version):
     return
   let archive = cacheRoot() / tool.name / archiveName
   verifiedDownload(url, archive, checksum)
   createDir(parentDir(result))
-  extractArchive(archive, result, stripTopDir)
+  extractArchive(archive, result, stripTopDir, nestedRoot)
   if not runtimeComplete(tool, version):
     raise newException(ValueError,
       tool.name & " " & version & " did not contain its executable")
@@ -165,6 +166,54 @@ proc installGo(version: string): string =
     stripTopDir = true,
   )
 
+proc javaArtifact(version: string): tuple[url, name, checksum: string] =
+  let feature = parseInt(version.split({'.', '+'}, maxsplit = 1)[0])
+  for page in 0 .. 99:
+    let indexText = cachedText(
+      javaFeatureReleasesUrl(feature, page),
+      "java",
+      "feature-" & $feature & "-" & fsComponent(version) & "-" &
+        $page & ".json",
+    )
+    let releases = parseJson(indexText)
+    if releases.len == 0:
+      break
+    for release in releases.items:
+      if javaVersion(release) != version:
+        continue
+      let binary =
+        if release.hasKey("binary"): release["binary"]
+        else: release["binaries"][0]
+      let package = binary["package"]
+      return (
+        package["link"].getStr(),
+        package["name"].getStr(),
+        package["checksum"].getStr(),
+      )
+    if releases.len < JavaPageSize:
+      break
+  raise newException(ValueError, "Java release not found: " & version)
+
+proc installJava(version: string): string =
+  let tool = parseToolId("java")
+  result = runtimeInstallDir(tool, version)
+  if runtimeComplete(tool, version):
+    return
+  var lock = acquireInstallLock(result & ".lock")
+  defer: lock.release()
+  if runtimeComplete(tool, version):
+    return
+  let artifact = javaArtifact(version)
+  result = installArchive(
+    tool,
+    version,
+    artifact.url,
+    artifact.name,
+    artifact.checksum,
+    stripTopDir = true,
+    nestedRoot = when defined(macosx): "Contents/Home" else: "",
+  )
+
 proc zigArtifact(index: JsonNode, version,
                  platform: string): tuple[url, checksum: string] =
   var release: JsonNode
@@ -210,6 +259,7 @@ proc installRuntime(tool: ToolId, version: string): string =
   case tool.kind
   of tkNodejs: installNode(version)
   of tkGolang: installGo(version)
+  of tkJava: installJava(version)
   of tkZig: installZigStyle("zig", version, ZigIndexUrl, stripTopDir = true)
   of tkZls: installZigStyle("zls", version, ZlsIndexUrl, stripTopDir = false)
   else: raise newException(ValueError, "not a runtime: " & tool.name)

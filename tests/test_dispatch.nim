@@ -155,6 +155,27 @@ suite "dispatcher":
 
       check resolveCommand("node", root).executable == second / "node"
 
+  test "javac injects the selected JDK home":
+    let root = createTempDir("selever-java-dispatch-", "")
+    defer: removeDir(root)
+    defer: clearRoots()
+    configureRoots(root)
+    writeFile(root / ".tool-versions", "java 21\n")
+
+    let tool = parseToolId("java")
+    let install = runtimeInstallDir(tool, "21.0.8+9")
+    let suffix = when defined(windows): ".exe" else: ""
+    createDir(install / "bin")
+    writeExecutable(install / "bin" / ("java" & suffix))
+    writeExecutable(install / "bin" / ("javac" & suffix))
+    createRuntimeLinks(tool, "21", "21.0.8+9")
+
+    let javac = resolveCommand("javac", root)
+    check javac.executable == install / "bin" / ("javac" & suffix)
+    check javac.javaHome == install
+    check resolveCommand("java", root).javaHome.len == 0
+    check resolveJavaHome(root) == install
+
   test "path selection does not claim another tool command":
     let root = createTempDir("selever-dispatch-", "")
     defer: removeDir(root)
