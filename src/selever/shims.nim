@@ -67,6 +67,14 @@ proc isLegacyManaged(command: string): bool =
   let marker = shimDir() / (command & ".shim")
   fileExists(marker) and readFile(marker).contains("# globver-managed")
 
+proc dispatcherTarget(dispatcher: string): string =
+  when defined(windows):
+    let current = parentDir(parentDir(dispatcher)) / "current" /
+      extractFilename(dispatcher)
+    if fileExists(current):
+      return current
+  dispatcher
+
 proc ensureShim(command, source: string; alreadyManaged: bool) =
   if command.len == 0 or command.toLowerAscii() == "selever" or
       command.contains('/') or command.contains('\\'):
@@ -92,21 +100,19 @@ proc ensureShim(command, source: string; alreadyManaged: bool) =
       raise newException(ValueError,
         "refusing to replace unmanaged shim: " & destination)
 
-  when defined(windows):
-    createHardlink(source, destination)
-  else:
-    createSymlink(source, destination)
+  createSymlink(source, destination)
 
 proc syncShims*(installed: openArray[InstalledSelection];
                 dispatcher = getAppFilename()) =
   var lock = acquireInstallLock(configRoot() / "managed-shims.lock")
   defer: lock.release()
   var managed = loadManagedShims()
+  let source = dispatcherTarget(dispatcher)
   var commands = allMappedCommands()
   for selection in installed:
     if selection.tool.isRuntime:
       commands.add selection.runtimeCommands
   for command in commands:
-    ensureShim(command, dispatcher, command in managed)
+    ensureShim(command, source, command in managed)
     managed.incl command
   saveManagedShims(managed)

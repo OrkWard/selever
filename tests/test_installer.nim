@@ -320,6 +320,40 @@ suite "installer":
       check fileExists(shim)
       check sameFile(dispatcher, shim)
 
+  when defined(windows):
+    test "Windows shims target the stable Scoop current path":
+      let root = createTempDir("selever-current-shim-", "")
+      defer: removeDir(root)
+      putEnv("SELEVER_DATA_DIR", root / "data")
+      putEnv("SELEVER_CONFIG_DIR", root / "config")
+      putEnv("SELEVER_SHIMS_DIR", root / "shims")
+      defer:
+        delEnv("SELEVER_DATA_DIR")
+        delEnv("SELEVER_CONFIG_DIR")
+        delEnv("SELEVER_SHIMS_DIR")
+
+      let tool = parseToolId("nodejs")
+      let version = "0.0.0-test"
+      let node = runtimeExecutable(tool, runtimeInstallDir(tool, version))
+      createDir(parentDir(node))
+      writeExecutable(node)
+
+      let appRoot = root / "apps" / "selever"
+      let dispatcher = appRoot / "2.2.1" / "selever.exe"
+      let current = appRoot / "current" / "selever.exe"
+      createDir(parentDir(dispatcher))
+      createDir(parentDir(current))
+      writeFile(dispatcher, "versioned")
+      writeFile(current, "current")
+
+      syncShims([
+        InstalledSelection(tool: tool, request: version, version: version),
+      ], dispatcher)
+      let shim = shimDir() / "node.exe"
+      check symlinkExists(shim)
+      check sameFile(current, shim)
+      check not sameFile(dispatcher, shim)
+
   test "sync creates a native dispatcher shim":
     let root = createTempDir("selever-shims-", "")
     defer: removeDir(root)
@@ -348,4 +382,5 @@ suite "installer":
     ], dispatcher)
     let shim = shimDir() / executableName("node")
     check fileExists(shim)
+    check symlinkExists(shim)
     check sameFile(dispatcher, shim)
