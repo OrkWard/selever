@@ -68,19 +68,11 @@ proc selectionStatus(selection: ToolSelection): string =
 proc listVisible(): int =
   let documents = discoveredToolVersions(getCurrentDir())
   let selections = visibleSelections(getCurrentDir())
-  stdout.writeLine("tool versions")
+  stdout.writeLine("tool version files")
   if documents.len == 0:
     stdout.writeLine("  (none)")
-  var seen = initHashSet[string]()
   for document in documents:
     stdout.writeLine("  " & document.path)
-    for selection in document.selections:
-      let state =
-        if selection.name in seen: "shadowed"
-        else: "active"
-      stdout.writeLine("    " & selection.name & " " &
-        selection.versions.join(" ") & " [" & state & "]")
-      seen.incl selection.name
 
   stdout.writeLine("active")
   if selections.len == 0:
@@ -88,6 +80,20 @@ proc listVisible(): int =
   for selection in selections:
     stdout.writeLine("  " & selection.name & "  " &
       selection.selectionStatus & "  [" & selection.source & "]")
+
+  var seen = initHashSet[string]()
+  var shadowed: seq[ToolSelection]
+  for document in documents:
+    for selection in document.selections:
+      if selection.name in seen:
+        shadowed.add selection
+      else:
+        seen.incl selection.name
+  if shadowed.len > 0:
+    stdout.writeLine("shadowed")
+    for selection in shadowed:
+      stdout.writeLine("  " & selection.name & " " &
+        selection.versions.join(" ") & "  [" & selection.source & "]")
   0
 
 proc runCli*(arguments: seq[string]): int =
