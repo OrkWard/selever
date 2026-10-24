@@ -1,4 +1,4 @@
-version = "2.1.0"
+version = "2.2.0"
 author = "OrkWard"
 description = "Fast project tool version dispatcher"
 license = "MIT"
