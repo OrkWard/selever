@@ -1,12 +1,11 @@
-VERSION := env("VERSION", `git describe --tags --always --dirty 2>/dev/null || echo "dev"`)
-GIT_COMMIT := `git rev-parse --short HEAD 2>/dev/null || echo "unknown"`
-BUILD_TIME := `date -u '+%Y-%m-%dT%H:%M:%SZ'`
-PACKAGE := "github.com/orkward/selever/pkg/config"
-
-LDFLAGS := "-s -w -X " + PACKAGE + ".Version=" + VERSION + " -X " + PACKAGE + ".GitCommit=" + GIT_COMMIT + " -X " + PACKAGE + ".BuildTime=" + BUILD_TIME
+default: test
 
 build:
-    go build -ldflags "{{ LDFLAGS }}" -o ./ ./cmd/*
+    nimble build -d:release -y
 
-install:
-    go install -ldflags "{{ LDFLAGS }}"
+test:
+    nimble test -y
+
+benchmark direct shim iterations="200":
+    nim c -d:release --hints:off --out:bin/shim-latency bench/shim_latency.nim
+    bin/shim-latency {{ direct }} {{ shim }} {{ iterations }} --version
