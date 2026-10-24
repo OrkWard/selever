@@ -2,7 +2,7 @@ import std/[os, sets, strutils]
 
 import ./[catalog, dispatch, installer, processutil, resolver, shims, toolversions]
 
-proc usage(): string =
+proc usage*(): string =
   """Usage:
   selever install [-n|--dry-run]
   selever update  [-n|--dry-run]
@@ -10,6 +10,18 @@ proc usage(): string =
   selever ls
   selever exec -- <command> [arguments...]
 
+Supported tools and selectors:
+  nodejs        latest | lts | lts/<codename> | <version-prefix>
+  golang        latest | <version-prefix>
+  java          latest | lts | <feature>[.<minor>[.<security>[.<patch>]]][+<build>]
+  zig           latest | <version-prefix>
+  zls           latest | <version-prefix>
+  npm:<package> <node-selector>:<package-selector>
+  gopkg:<module> <go-selector>:<package-selector>
+
+Runtime tools also accept system and path:<directory>.
+Version prefixes select the latest matching release; exact versions are immutable.
+Package selectors are passed unchanged to npm or go install.
 Install reuses complete local selectors. Update refreshes mutable selectors.
 Shim execution never installs or accesses the network.
 Exec only sets JAVA_HOME for the selected JDK."""
