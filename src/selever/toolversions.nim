@@ -1,6 +1,10 @@
 import std/[os, strutils, tables]
 
-const ToolVersionsFile* = ".tool-versions"
+import ./layout
+
+const
+  ToolVersionsFile* = ".tool-versions"
+  GlobalToolVersionsFile* = "tool-versions"
 
 type
   ToolSelection* = object
@@ -31,11 +35,9 @@ proc readToolVersions*(path: string): seq[ToolSelection] =
   parseToolVersionsContent(readFile(path), parentDir(path), path)
 
 proc discoveredToolVersions*(startDir: string,
-                             homeDir = ""): seq[ToolVersionsDocument] =
-  var visited = initTable[string, bool]()
+                             configDir = ""): seq[ToolVersionsDocument] =
   var directory = normalizedPath(absolutePath(startDir))
   while true:
-    visited[directory] = true
     let path = directory / ToolVersionsFile
     if fileExists(path):
       result.add ToolVersionsDocument(path: path, selections: readToolVersions(path))
@@ -44,22 +46,20 @@ proc discoveredToolVersions*(startDir: string,
       break
     directory = parent
 
-  let environmentHome = getEnv("HOME")
-  let homeValue =
-    if homeDir.len > 0: homeDir
-    elif environmentHome.len > 0: environmentHome
-    else: getHomeDir()
-  if homeValue.len > 0:
-    let home = normalizedPath(absolutePath(homeValue))
-    if not visited.hasKey(home):
-      let path = home / ToolVersionsFile
-      if fileExists(path):
-        result.add ToolVersionsDocument(path: path, selections: readToolVersions(path))
+  let globalRoot =
+    if configDir.len > 0: normalizedPath(absolutePath(configDir))
+    else: configRoot()
+  let globalPath = globalRoot / GlobalToolVersionsFile
+  if fileExists(globalPath):
+    result.add ToolVersionsDocument(
+      path: globalPath,
+      selections: readToolVersions(globalPath),
+    )
 
 proc visibleSelections*(startDir: string,
-                        homeDir = ""): seq[ToolSelection] =
+                        configDir = ""): seq[ToolSelection] =
   var seen = initTable[string, bool]()
-  for document in discoveredToolVersions(startDir, homeDir):
+  for document in discoveredToolVersions(startDir, configDir):
     for selection in document.selections:
       if not seen.hasKey(selection.name):
         seen[selection.name] = true
@@ -73,10 +73,10 @@ proc findSelection*(selections: openArray[ToolSelection],
   -1
 
 proc resolveSelection*(name, startDir: string,
-                       homeDir = ""): ToolSelection =
-  let selections = visibleSelections(startDir, homeDir)
+                       configDir = ""): ToolSelection =
+  let selections = visibleSelections(startDir, configDir)
   let index = selections.findSelection(name)
   if index < 0:
     raise newException(ValueError,
-      "no version configured for " & name & " in " & ToolVersionsFile)
+      "no version configured for " & name & " in tool version files")
   selections[index]

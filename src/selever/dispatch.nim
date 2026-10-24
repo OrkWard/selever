@@ -134,7 +134,7 @@ proc resolvePackageCommand(command, startDir: string,
   let index = selections.findSelection(entry.tool)
   if index < 0:
     raise newException(ValueError,
-      command & ": " & entry.tool & " is not configured in " & ToolVersionsFile)
+      command & ": " & entry.tool & " is not configured in tool version files")
   let selection = selections[index]
   if selection.versions.len != 1:
     raise newException(ValueError,
@@ -216,7 +216,7 @@ proc resolveCommand*(command, startDir: string): ResolvedCommand =
         return
 
   raise newException(ValueError,
-    command & ": no matching installed version in " & ToolVersionsFile)
+    command & ": no matching installed version in tool version files")
 
 proc runResolved*(resolved: ResolvedCommand,
                   arguments: seq[string]): int =

@@ -18,10 +18,12 @@ proc writeExecutable(path: string; content = "") =
 
 proc configureRoots(root: string) =
   putEnv("SELEVER_DATA_DIR", root / "data")
+  putEnv("SELEVER_CONFIG_DIR", root / "config")
   putEnv("SELEVER_SHIMS_DIR", root / "shims")
 
 proc clearRoots() =
   delEnv("SELEVER_DATA_DIR")
+  delEnv("SELEVER_CONFIG_DIR")
   delEnv("SELEVER_SHIMS_DIR")
 
 proc createRuntime(tool: ToolId, version: string): string =

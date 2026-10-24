@@ -22,7 +22,7 @@ proc parseDryRun(arguments: seq[string]): bool =
 proc applyVisible(mode: InstallMode, dryRun: bool): int =
   let selections = visibleSelections(getCurrentDir())
   if selections.len == 0:
-    stderr.writeLine("selever: no " & ToolVersionsFile & " selections found")
+    stderr.writeLine("selever: no tool version selections found")
     return 1
   let installed = installAll(
     selections,
@@ -68,7 +68,7 @@ proc selectionStatus(selection: ToolSelection): string =
 proc listVisible(): int =
   let documents = discoveredToolVersions(getCurrentDir())
   let selections = visibleSelections(getCurrentDir())
-  stdout.writeLine(".tool-versions")
+  stdout.writeLine("tool versions")
   if documents.len == 0:
     stdout.writeLine("  (none)")
   var seen = initHashSet[string]()
