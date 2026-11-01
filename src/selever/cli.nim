@@ -2,6 +2,8 @@ import std/[os, sets, strutils]
 
 import ./[catalog, dispatch, installer, processutil, resolver, shims, toolversions]
 
+const QuitUsage* = 2
+
 proc usage*(): string =
   """Usage:
   selever install [-n|--dry-run]
@@ -33,20 +35,20 @@ proc parseDryRun(arguments: seq[string]): bool =
     return true
   raise newException(ValueError, "expected only -n or --dry-run")
 
-proc applyVisible(mode: InstallMode, dryRun: bool): int =
+proc runInstall(mode: InstallMode, dryRun: bool): int =
   let selections = visibleSelections(getCurrentDir())
   if selections.len == 0:
     stderr.writeLine("selever: no tool version selections found")
-    return 1
+    return QuitFailure
   let installed = installAll(
     selections,
     InstallOptions(mode: mode, dryRun: dryRun),
   )
   if not dryRun:
     syncShims(installed)
-  0
+  QuitSuccess
 
-proc execWithJava(arguments: seq[string]): int =
+proc runExec(arguments: seq[string]): int =
   if arguments.len < 2 or arguments[0] != "--":
     raise newException(ValueError,
       "expected exec -- <command> [arguments...]")
@@ -92,7 +94,7 @@ proc selectionStatus(selection: ToolSelection): string =
   pair.runtime & " -> " & parentVersion & ", " &
     pair.package & " -> " & packageVersion & " installed"
 
-proc listVisible(): int =
+proc runList(): int =
   let documents = discoveredToolVersions(getCurrentDir())
   let selections = visibleSelections(getCurrentDir())
   stdout.writeLine("tool version files")
@@ -121,32 +123,32 @@ proc listVisible(): int =
     for selection in shadowed:
       stdout.writeLine("  " & selection.name & " " &
         selection.versions.join(" ") & "  [" & selection.source & "]")
-  0
+  QuitSuccess
 
 proc runCli*(arguments: seq[string]): int =
   try:
     if arguments.len == 0:
       stdout.writeLine(usage())
-      return 0
+      return QuitSuccess
     case arguments[0]
     of "install":
-      return applyVisible(imInstall, parseDryRun(arguments[1 .. ^1]))
+      return runInstall(imInstall, parseDryRun(arguments[1 .. ^1]))
     of "update":
-      return applyVisible(imUpdate, parseDryRun(arguments[1 .. ^1]))
+      return runInstall(imUpdate, parseDryRun(arguments[1 .. ^1]))
     of "list", "ls":
       if arguments.len != 1:
         raise newException(ValueError, "list accepts no arguments")
-      return listVisible()
+      return runList()
     of "exec":
-      return execWithJava(arguments[1 .. ^1])
+      return runExec(arguments[1 .. ^1])
     of "-h", "--help":
       if arguments.len != 1:
         raise newException(ValueError, "help accepts no arguments")
       stdout.writeLine(usage())
-      return 0
+      return QuitSuccess
     else:
       stderr.writeLine(usage())
-      return 2
+      return QuitUsage
   except ValueError as error:
     stderr.writeLine("selever: " & error.msg)
-    2
+    QuitUsage

@@ -37,7 +37,7 @@ proc runCommand*(command: string, arguments: openArray[string],
 proc runChecked*(command: string, arguments: openArray[string],
                  env: StringTableRef = nil) =
   let exitCode = runCommand(command, arguments, env)
-  if exitCode != 0:
+  if exitCode != QuitSuccess:
     raise newException(OSError,
       command & " exited with status " & $exitCode)
 

@@ -4,10 +4,10 @@ import ../src/selever/cli
 
 suite "cli":
   test "bare invocation displays help successfully":
-    check runCli(@[]) == 0
+    check runCli(@[]) == QuitSuccess
 
   test "help displays successfully":
-    check runCli(@["--help"]) == 0
+    check runCli(@["--help"]) == QuitSuccess
 
   test "help documents supported tools and selectors":
     let help = usage()
@@ -18,9 +18,9 @@ suite "cli":
     check help.contains("<node-selector>:<package-selector>")
 
   test "exec requires its delimiter and a command":
-    check runCli(@["exec"]) == 2
-    check runCli(@["exec", "java"]) == 2
-    check runCli(@["exec", "--"]) == 2
+    check runCli(@["exec"]) == QuitUsage
+    check runCli(@["exec", "java"]) == QuitUsage
+    check runCli(@["exec", "--"]) == QuitUsage
 
   test "unknown arguments are usage errors":
-    check runCli(@["--unknown"]) == 2
+    check runCli(@["--unknown"]) == QuitUsage

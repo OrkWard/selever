@@ -1,5 +1,7 @@
 import std/[algorithm, cmdline, json, monotimes, osproc, streams, strutils, times]
 
+const QuitUsage = 2
+
 proc usage(): string =
   "usage: shim_latency <direct> <shim> [iterations] [arguments ...]"
 
@@ -13,7 +15,7 @@ proc measure(executable: string, arguments: seq[string]): int64 =
   discard process.outputStream.readAll()
   let exitCode = process.waitForExit()
   process.close()
-  if exitCode != 0:
+  if exitCode != QuitSuccess:
     raise newException(OSError,
       executable & " exited with status " & $exitCode)
   (getMonoTime() - started).inNanoseconds
@@ -29,7 +31,7 @@ proc main(): int =
   let parameters = commandLineParams()
   if parameters.len < 2:
     stderr.writeLine(usage())
-    return 2
+    return QuitUsage
 
   let direct = parameters[0]
   let shim = parameters[1]
@@ -70,7 +72,7 @@ proc main(): int =
     "shimP95Ms": shimP95.milliseconds,
     "overheadP95Ms": (shimP95 - directP95).milliseconds,
   })
-  0
+  QuitSuccess
 
 when isMainModule:
   quit(main())

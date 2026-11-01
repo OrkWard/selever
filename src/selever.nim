@@ -12,7 +12,7 @@ proc main(): int =
     return runResolved(resolved, arguments)
   except CatchableError as error:
     stderr.writeLine("selever: " & error.msg)
-    return 1
+    return QuitFailure
 
 when isMainModule:
   quit(main())
