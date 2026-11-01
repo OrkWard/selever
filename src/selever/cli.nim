@@ -27,15 +27,20 @@ Supported tools and selectors:
   java          latest | lts | <feature>[.<minor>[.<security>[.<patch>]]][+<build>]
   zig           latest | <version-prefix>
   zls           latest | <version-prefix>
+  msvc          <toolset>[-x64|-x86|-arm64], e.g. 14.44 or 14.44-arm64
+  gcc           <winlibs release tag>, e.g. 16.2.0posix-14.0.0-ucrt-r1
+  llvm-mingw    <llvm-mingw release tag>, e.g. 20261020
   npm:<package> <node-selector>:<package-selector>
   gopkg:<module> <go-selector>:<package-selector>
 
-Runtime tools also accept system and path:<directory>.
+nodejs, golang, java, zig and zls also accept system and path:<directory>.
+msvc, gcc and llvm-mingw are Windows-only and accept only full names.
 Version prefixes select the latest matching release; exact versions are immutable.
 Package selectors are passed unchanged to npm or go install.
 Install reuses complete local selectors. Update refreshes mutable selectors.
 Shim execution never installs or accesses the network.
-java has no shims. Exec runs a command with JAVA_HOME and the JDK on PATH."""
+java, msvc, gcc and llvm-mingw have no shims. Exec runs a command with their
+environment: JAVA_HOME, CC, CXX, PATH and, for msvc, what vcvarsall sets."""
 
 proc parseDryRun(arguments: seq[string]): bool =
   if arguments.len == 0:

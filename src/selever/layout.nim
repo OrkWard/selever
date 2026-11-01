@@ -70,6 +70,9 @@ proc storageName*(tool: ToolId): string =
   of tkJava: "java"
   of tkZig: "zig"
   of tkZls: "zls"
+  of tkMsvc: "msvc"
+  of tkGcc: "gcc"
+  of tkLlvmMingw: "llvm-mingw"
   of tkNpm: "npm"
   of tkGoPackage: "gopkg"
   of tkUnknown: "unknown"
@@ -83,7 +86,10 @@ proc runtimeInstallDir*(tool: ToolId, version: string): string =
   runtimeRoot(tool) / fsComponent(version)
 
 proc runtimeSelectorPath*(tool: ToolId, selector: string): string =
-  runtimeRoot(tool) / fsComponent(selector)
+  runtimeRoot(tool) / fsComponent(tool.storedSelector(selector))
+
+proc windowsSdkInstallDir*(build: string): string =
+  dataRoot() / "winsdk" / fsComponent(build)
 
 proc packageRoot*(tool: ToolId): string =
   if not tool.isPackage:
@@ -134,5 +140,5 @@ proc executableDirs*(tool: ToolId, version: string,
     result = @[root / "bin"]
   of tkZig, tkZls:
     result = @[root]
-  of tkUnknown:
+  of tkMsvc, tkGcc, tkLlvmMingw, tkUnknown:
     discard

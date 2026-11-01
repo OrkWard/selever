@@ -1,6 +1,13 @@
-import std/[os, strutils]
+import std/[os, osproc, strutils]
 
 import ./processutil
+
+type Download* = object
+  url*: string
+  destination*: string
+  sha256*: string
+
+const ParallelDownloads = 8
 
 const CurlArguments = @[
   "--disable",
@@ -78,6 +85,71 @@ proc verifiedDownload*(url, destination, expected: string) =
         removeFile(destination)
       if attempt == 1:
         raise
+
+proc verifiedDownloadAll*(downloads: openArray[Download]) =
+  ## verifiedDownload for many files, ParallelDownloads at a time.
+  var queue: seq[tuple[item: Download, retried: bool]]
+  for item in downloads:
+    if fileExists(item.destination):
+      try:
+        verifySha256(item.destination, item.sha256)
+        continue
+      except ValueError:
+        removeFile(item.destination)
+    var queued = false
+    for entry in queue:
+      if entry.item.destination == item.destination:
+        queued = true
+    if not queued:
+      queue.add (item, false)
+
+  var running: seq[tuple[process: Process, item: Download, retried: bool]]
+  var failures: seq[string]
+  var next = 0
+  while next < queue.len or running.len > 0:
+    while next < queue.len and running.len < ParallelDownloads:
+      let (item, retried) = queue[next]
+      inc next
+      createDir(parentDir(item.destination))
+      let partial = item.destination & ".part"
+      if fileExists(partial):
+        removeFile(partial)
+      let process = startProcess("curl",
+        args = CurlArguments & @["--output", partial, item.url],
+        options = {poUsePath, poParentStreams})
+      running.add (process, item, retried)
+
+    var finished = false
+    var index = 0
+    while index < running.len:
+      let (process, item, retried) = running[index]
+      let exitCode = process.peekExitCode()
+      if exitCode == -1:
+        inc index
+        continue
+      process.close()
+      running.delete(index)
+      finished = true
+      let partial = item.destination & ".part"
+      if exitCode != QuitSuccess:
+        if fileExists(partial):
+          removeFile(partial)
+        failures.add item.url & ": curl exited with status " & $exitCode
+        continue
+      try:
+        verifySha256(partial, item.sha256)
+        moveFile(partial, item.destination)
+      except ValueError as error:
+        removeFile(partial)
+        if retried:
+          failures.add error.msg
+        else:
+          queue.add (item, true)
+    if not finished:
+      sleep(50)
+
+  if failures.len > 0:
+    raise newException(OSError, "download failed:\n" & failures.join("\n"))
 
 proc extractArchive*(archive, destination: string; stripTopDir: bool;
                      nestedRoot = "") =

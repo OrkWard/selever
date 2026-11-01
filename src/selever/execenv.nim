@@ -1,9 +1,9 @@
-## The environment `selever exec` gives a command: Java has no shims, so its
-## selection only takes effect through it.
+## The environment `selever exec` gives a command: Java and the C toolchains
+## have no shims, so their selections only take effect through it.
 
 import std/[os, strutils]
 
-import ./[catalog, dispatch, environment, layout, resolver, toolversions]
+import ./[catalog, dispatch, environment, layout, msvc, resolver, toolversions]
 
 proc javaHome(executable: string): string =
   var path = absolutePath(executable)
@@ -44,12 +44,40 @@ proc javaEnvironment(selection: ToolSelection): EnvironmentChanges =
   result.prepend("PATH", home / "bin")
   result.setVariable("JAVA_HOME", home)
 
+proc compilerEnvironment(root, cc, cxx: string): EnvironmentChanges =
+  let suffix = when defined(windows): ".exe" else: ""
+  let bin = root / "bin"
+  result.prepend("PATH", bin)
+  result.setVariable("CC", bin / (cc & suffix))
+  result.setVariable("CXX", bin / (cxx & suffix))
+
+proc toolchainEnvironment(tool: ToolId,
+                          selection: ToolSelection): EnvironmentChanges =
+  for selector in selection.versions:
+    let concrete = resolveRuntimeLocal(tool, selector)
+    if concrete.len == 0:
+      continue
+    let root = runtimeInstallDir(tool, concrete)
+    case tool.kind
+    of tkMsvc:
+      return msvcEnvironment(root, parseMsvcSelector(selector).target)
+    of tkGcc:
+      return compilerEnvironment(root, "gcc", "g++")
+    of tkLlvmMingw:
+      return compilerEnvironment(root, "clang", "clang++")
+    else:
+      discard
+  raise newException(ValueError,
+    tool.name & ": no matching installed version in tool version files")
+
 proc execEnvironment*(startDir: string): EnvironmentChanges =
   ## Earlier selections come first on PATH and the other lists.
   for selection in visibleSelections(startDir):
     let tool = parseToolId(selection.name)
     if tool.kind == tkJava:
       result.merge javaEnvironment(selection)
+    elif tool.isCToolchain:
+      result.merge toolchainEnvironment(tool, selection)
 
 proc findCommand*(command, pathValue: string): string =
   ## The command as found on pathValue, which is not this process's PATH.

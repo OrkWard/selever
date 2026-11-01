@@ -1,9 +1,10 @@
-import std/[json, os, strtabs, strutils, tables]
+import std/[json, os, strtabs, strutils, tables, uri]
 
 import ./[
   catalog,
   layout,
   lockfile,
+  msvc,
   namemap,
   processutil,
   resolver,
@@ -255,13 +256,84 @@ proc installZigStyle(toolName, version, indexUrl: string;
     stripTopDir,
   )
 
+proc githubReleaseAsset(repository, tag: string,
+                        matches: proc(name: string): bool):
+                        tuple[url, name, checksum: string] =
+  ## The single asset of a release accepted by matches, with the SHA-256
+  ## digest GitHub publishes for it.
+  let response = fetchText(
+    "https://api.github.com/repos/" & repository & "/releases/tags/" &
+    encodeUrl(tag, usePlus = false))
+  if response.len == 0:
+    raise newException(ValueError,
+      repository & " has no release " & tag)
+  for asset in parseJson(response)["assets"].items:
+    let name = asset["name"].getStr()
+    if not matches(name):
+      continue
+    if result.name.len > 0:
+      raise newException(ValueError,
+        repository & " " & tag & " has more than one matching asset")
+    let digest = asset{"digest"}.getStr()
+    if not digest.startsWith("sha256:"):
+      raise newException(ValueError, name & " has no SHA-256 digest")
+    result = (asset["browser_download_url"].getStr(), name, digest[7 .. ^1])
+  if result.name.len == 0:
+    raise newException(ValueError,
+      repository & " " & tag & " has no asset for this platform")
+
+proc installGcc(tag: string): string =
+  ## A winlibs release, named by its tag; the plain x86_64 build.
+  if nativeArchitecture() != "x64":
+    raise newException(ValueError, "gcc (winlibs) supports only x64 hosts")
+  let tool = parseToolId("gcc")
+  result = runtimeInstallDir(tool, tag)
+  if runtimeComplete(tool, tag):
+    return
+  var lock = acquireInstallLock(result & ".lock")
+  defer: lock.release()
+  if runtimeComplete(tool, tag):
+    return
+  let asset = githubReleaseAsset("brechtsanders/winlibs_mingw", tag,
+    proc(name: string): bool =
+      name.startsWith("winlibs-x86_64-") and name.endsWith(".zip") and
+        "-llvm-" notin name)
+  result = installArchive(tool, tag, asset.url, asset.name, asset.checksum,
+    stripTopDir = true)
+
+proc installLlvmMingw(tag: string): string =
+  ## An llvm-mingw release, named by its tag; always the ucrt build.
+  let tool = parseToolId("llvm-mingw")
+  result = runtimeInstallDir(tool, tag)
+  if runtimeComplete(tool, tag):
+    return
+  var lock = acquireInstallLock(result & ".lock")
+  defer: lock.release()
+  if runtimeComplete(tool, tag):
+    return
+  let architecture =
+    case nativeArchitecture()
+    of "x64": "x86_64"
+    of "arm64": "aarch64"
+    else: "i686"
+  let expected = "llvm-mingw-" & tag & "-ucrt-" & architecture & ".zip"
+  let asset = githubReleaseAsset("mstorsjo/llvm-mingw", tag,
+    proc(name: string): bool = name == expected)
+  result = installArchive(tool, tag, asset.url, asset.name, asset.checksum,
+    stripTopDir = true)
+
 proc installRuntime(tool: ToolId, version: string): string =
+  if tool.isCToolchain and not defined(windows):
+    raise newException(ValueError, tool.name & " is only supported on Windows")
   case tool.kind
   of tkNodejs: installNode(version)
   of tkGolang: installGo(version)
   of tkJava: installJava(version)
   of tkZig: installZigStyle("zig", version, ZigIndexUrl, stripTopDir = true)
   of tkZls: installZigStyle("zls", version, ZlsIndexUrl, stripTopDir = false)
+  of tkMsvc: installMsvc(version)
+  of tkGcc: installGcc(version)
+  of tkLlvmMingw: installLlvmMingw(version)
   else: raise newException(ValueError, "not a runtime: " & tool.name)
 
 proc validatePackageName(package: string) =
@@ -465,13 +537,18 @@ proc ensureRuntime(tool: ToolId, selector: string, options: InstallOptions,
     return resolved[key]
 
   if selector == "system" or selector.startsWith("path:"):
+    if tool.isCToolchain:
+      raise newException(ValueError,
+        tool.name & " accepts only full toolchain names, got " & selector)
     result = selector
     resolved[key] = result
     installed.add InstalledSelection(tool: tool, request: selector, version: selector)
     return
 
   let local = resolveRuntimeLocal(tool, selector)
-  let refresh = options.mode == imUpdate and local.len > 0 and local != selector
+  # C toolchain names are full names, so an installed one is never refreshed.
+  let refresh = options.mode == imUpdate and local.len > 0 and
+    local != selector and not tool.isCToolchain
   if local.len > 0 and not refresh:
     report("skip", tool.name, selector, local)
     result = local
@@ -482,10 +559,11 @@ proc ensureRuntime(tool: ToolId, selector: string, options: InstallOptions,
       tool.name, selector, result)
     if not options.dryRun:
       discard installRuntime(tool, result)
-      var selectorLock = acquireInstallLock(
-        runtimeRoot(tool) / ".selectors.lock")
-      defer: selectorLock.release()
-      createRuntimeLinks(tool, selector, result)
+      if not tool.isCToolchain:
+        var selectorLock = acquireInstallLock(
+          runtimeRoot(tool) / ".selectors.lock")
+        defer: selectorLock.release()
+        createRuntimeLinks(tool, selector, result)
 
   resolved[key] = result
   if expose:

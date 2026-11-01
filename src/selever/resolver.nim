@@ -1,6 +1,6 @@
 import std/[algorithm, json, os, strutils]
 
-import ./[catalog, layout, processutil, transport]
+import ./[catalog, layout, msvc, processutil, transport]
 
 const
   NodeIndexUrl = "https://nodejs.org/dist/index.json"
@@ -24,11 +24,17 @@ proc runtimeExecutable*(tool: ToolId, root: string): string =
     root / ("zig" & suffix)
   of tkZls:
     root / ("zls" & suffix)
+  of tkGcc:
+    root / "bin" / ("gcc" & suffix)
+  of tkLlvmMingw:
+    root / "bin" / ("clang" & suffix)
   else:
     ""
 
 proc runtimeComplete*(tool: ToolId, version: string): bool =
   let root = runtimeInstallDir(tool, version)
+  if tool.kind == tkMsvc:
+    return msvcComplete(root)
   let executable = runtimeExecutable(tool, root)
   if executable.len == 0 or not executable.isExecutableFile:
     return false
@@ -95,7 +101,7 @@ proc resolveRuntimeLocal*(tool: ToolId, selector: string): string =
   if symlinkExists(path):
     result = resolvedLinkVersion(path, runtimeRoot(tool))
   elif dirExists(path):
-    result = selector
+    result = tool.storedSelector(selector)
   if result.len > 0 and not runtimeComplete(tool, result):
     result.setLen(0)
 
@@ -306,5 +312,8 @@ proc resolveInstallVersion*(tool: ToolId, selector: string): string =
     resolveZigStyle(selector, ZigIndexUrl)
   of tkZls:
     resolveZigStyle(selector, ZlsIndexUrl)
+  of tkMsvc, tkGcc, tkLlvmMingw:
+    # Full names only: no latest, no prefixes, nothing to look up.
+    tool.storedSelector(selector)
   else:
     raise newException(ValueError, "not a runtime: " & tool.name)
