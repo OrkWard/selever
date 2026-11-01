@@ -13,7 +13,6 @@ type
     arguments*: seq[string]
     tool*: string
     version*: string
-    javaHome*: string
 
 proc invocationName*(path: string): string =
   when defined(windows):
@@ -21,7 +20,7 @@ proc invocationName*(path: string): string =
   else:
     splitPath(path).tail
 
-proc executableIn(directory, command: string): string =
+proc executableIn*(directory, command: string): string =
   when defined(windows):
     for extension in [".exe", ".com"]:
       let candidate = directory / (command & extension)
@@ -38,7 +37,7 @@ proc isOwnDispatcher(path: string): bool =
   except OSError:
     false
 
-proc systemExecutable(command: string): string =
+proc systemExecutable*(command: string): string =
   let ownShims = normalizedPath(shimDir())
   for directory in getEnv("PATH").split(PathSep):
     if directory.len == 0:
@@ -53,7 +52,6 @@ proc handlesBuiltinCommand(tool: ToolId, command: string): bool =
   case tool.kind
   of tkNodejs: command in ["node", "npm", "npx", "corepack"]
   of tkGolang: command in ["go", "gofmt"]
-  of tkJava: command in JavaCommands
   of tkZig: command == "zig"
   of tkZls: command == "zls"
   else: false
@@ -67,21 +65,6 @@ proc nodeScript(root, command: string): string =
   of "npx": moduleRoot / "npm" / "bin" / "npx-cli.js"
   of "corepack": moduleRoot / "corepack" / "dist" / "corepack.js"
   else: ""
-
-proc javaHomeForExecutable(executable: string): string =
-  var path = absolutePath(executable)
-  for _ in 0 ..< 16:
-    if not symlinkExists(path):
-      break
-    let target = expandSymlink(path)
-    path =
-      if target.isAbsolute: target
-      else: absolutePath(target, parentDir(path))
-  let bin = parentDir(path)
-  if splitPath(bin).tail.cmpIgnoreCase("bin") != 0:
-    raise newException(ValueError,
-      "selected java executable is not inside a JDK bin directory: " & executable)
-  parentDir(bin)
 
 proc installedBuiltin(tool: ToolId, version,
                       command: string): ResolvedCommand =
@@ -104,12 +87,9 @@ proc installedBuiltin(tool: ToolId, version,
         executable: executable,
         tool: tool.name,
         version: version,
-        javaHome:
-          if tool.kind == tkJava and command == "javac": root
-          else: "",
       )
 
-proc pathExecutable(pathValue, command: string): string =
+proc pathExecutable*(pathValue, command: string): string =
   let expanded = pathValue.expandTilde
   result = executableIn(expanded, command)
   if result.len == 0:
@@ -215,10 +195,6 @@ proc resolveCommand*(command, startDir: string): ResolvedCommand =
             executable: executable,
             tool: selection.name,
             version: selector,
-            javaHome:
-              if tool.kind == tkJava and command == "javac":
-                javaHomeForExecutable(executable)
-              else: "",
           )
         continue
       if selector.startsWith("path:"):
@@ -228,10 +204,6 @@ proc resolveCommand*(command, startDir: string): ResolvedCommand =
             executable: executable,
             tool: selection.name,
             version: selector,
-            javaHome:
-              if tool.kind == tkJava and command == "javac":
-                javaHomeForExecutable(executable)
-              else: "",
           )
         continue
 
@@ -246,31 +218,17 @@ proc resolveCommand*(command, startDir: string): ResolvedCommand =
   raise newException(ValueError,
     command & ": no matching installed version in tool version files")
 
-proc resolveJavaHome*(startDir: string): string =
-  let resolved = resolveCommand("java", startDir)
-  if resolved.tool != "java":
-    raise newException(ValueError, "java is not provided by the java tool")
-  javaHomeForExecutable(resolved.executable)
-
 proc runResolved*(resolved: ResolvedCommand,
                   arguments: seq[string]): int =
   when defined(windows):
-    let environment =
-      if resolved.javaHome.len > 0:
-        environmentWith("JAVA_HOME", resolved.javaHome)
-      else:
-        nil
     let process = startProcess(
       resolved.executable,
       args = resolved.arguments & arguments,
-      env = environment,
       options = {poParentStreams},
     )
     result = process.waitForExit()
     process.close()
   else:
-    if resolved.javaHome.len > 0:
-      putEnv("JAVA_HOME", resolved.javaHome)
     let args = @[resolved.executable] & resolved.arguments & arguments
     let rawArgs = allocCStringArray(args)
     discard execv(resolved.executable.cstring, rawArgs)

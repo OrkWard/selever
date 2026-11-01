@@ -175,7 +175,7 @@ suite "installer":
       check lookupName("disabled").command.len == 0
       check lookupName("enabled").tool == tool.name
 
-  test "name-map rejects Java command ownership":
+  test "name-map lets packages own Java command names":
     let root = createTempDir("selever-java-map-", "")
     defer: removeDir(root)
     putEnv("SELEVER_DATA_DIR", root / "data")
@@ -185,8 +185,8 @@ suite "installer":
     let bin = packageInstallDir(tool, "1.0.0", "22.0.0") / "bin"
     createDir(bin)
     writeExecutable(bin / "javac")
-    expect ValueError:
-      registerPackageCommands(tool)
+    registerPackageCommands(tool)
+    check lookupName("javac").tool == tool.name
 
   test "name-map reservation blocks takeover and permits recovery":
     let root = createTempDir("selever-map-reservation-", "")
@@ -291,7 +291,7 @@ suite "installer":
     expect ValueError:
       verifySha256(path, repeat('0', 64))
 
-  test "sync creates Java shims from installed JDK commands":
+  test "sync creates no Java shims":
     let root = createTempDir("selever-java-shims-", "")
     defer: removeDir(root)
     putEnv("SELEVER_DATA_DIR", root / "data")
@@ -316,9 +316,7 @@ suite "installer":
       InstalledSelection(tool: tool, request: "21", version: version),
     ], dispatcher)
     for command in ["java", "javac"]:
-      let shim = shimDir() / executableName(command)
-      check fileExists(shim)
-      check sameFile(dispatcher, shim)
+      check not fileExists(shimDir() / executableName(command))
 
   when defined(windows):
     test "Windows shims target the stable Scoop current path":

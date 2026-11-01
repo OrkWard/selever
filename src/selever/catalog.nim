@@ -20,16 +20,6 @@ type
     runtime*: string
     package*: string
 
-const JavaCommands* = [
-  "appletviewer", "extcheck", "idlj", "jar", "jarsigner", "java", "javac",
-  "javadoc", "javah", "javap", "jcmd", "jconsole", "jdb", "jdeprscan",
-  "jdeps", "jfr", "jhat", "jhsdb", "jimage", "jinfo", "jlink", "jmap",
-  "jmod", "jpackage", "jps", "jrunscript", "jsadebugd", "jshell", "jstack",
-  "jstat", "jstatd", "jwebserver", "keytool", "native2ascii", "orbd",
-  "pack200", "policytool", "rmic", "rmiregistry", "schemagen", "serialver",
-  "servertool", "tnameserv", "unpack200", "wsgen", "wsimport", "xjc",
-]
-
 proc parseToolId*(name: string): ToolId =
   result.name = name
   case name

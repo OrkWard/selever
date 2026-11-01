@@ -1,6 +1,15 @@
-import std/[os, sets, strutils]
+import std/[os, sets, strtabs, strutils]
 
-import ./[catalog, dispatch, installer, processutil, resolver, shims, toolversions]
+import ./[
+  catalog,
+  environment,
+  execenv,
+  installer,
+  processutil,
+  resolver,
+  shims,
+  toolversions,
+]
 
 const QuitUsage* = 2
 
@@ -26,7 +35,7 @@ Version prefixes select the latest matching release; exact versions are immutabl
 Package selectors are passed unchanged to npm or go install.
 Install reuses complete local selectors. Update refreshes mutable selectors.
 Shim execution never installs or accesses the network.
-Exec only sets JAVA_HOME for the selected JDK."""
+java has no shims. Exec runs a command with JAVA_HOME and the JDK on PATH."""
 
 proc parseDryRun(arguments: seq[string]): bool =
   if arguments.len == 0:
@@ -55,10 +64,12 @@ proc runExec(arguments: seq[string]): int =
   let commandArguments =
     if arguments.len > 2: arguments[2 .. ^1]
     else: @[]
+  let environment = currentEnvironment()
+  execEnvironment(getCurrentDir()).applyTo(environment)
   runCommand(
-    arguments[1],
+    findCommand(arguments[1], environment.getOrDefault("PATH")),
     commandArguments,
-    environmentWith("JAVA_HOME", resolveJavaHome(getCurrentDir())),
+    environment,
   )
 
 proc selectionStatus(selection: ToolSelection): string =
