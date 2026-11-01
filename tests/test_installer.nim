@@ -78,6 +78,15 @@ suite "installer":
     check fsComponent("21.0.13+9") == "21.0.13+9"
     check fsComponent("lts/iron") == "lts%2Firon"
 
+  test "zig latest and prefixes skip master":
+    let index = parseJson("""
+      {"master": {"version": "0.18.0-dev.1+abc"}, "0.17.0": {}, "0.16.1": {}}
+    """)
+    check newestZigStyleRelease(index, "latest") == "0.17.0"
+    check newestZigStyleRelease(index, "0.16") == "0.16.1"
+    expect ValueError:
+      discard newestZigStyleRelease(index, "0.18")
+
   test "a package requires exactly one explicit pair":
     expect ValueError:
       discard installAll([

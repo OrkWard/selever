@@ -280,23 +280,24 @@ proc resolveJava(selector: string): string =
       break
   raise newException(ValueError, "Java release not found: " & selector)
 
-proc resolveZigStyle(selector, indexUrl: string): string =
-  if selector.isConcreteVersion:
-    return selector
-  let index = parseJson(fetchText(indexUrl))
+proc newestZigStyleRelease*(index: JsonNode, selector: string): string =
+  ## The newest release matching latest or a version prefix. master is a
+  ## development build, installable only by its exact version.
   var matches: seq[string]
-  for name, release in index.pairs:
-    let version =
-      if name == "master" and release.hasKey("version"):
-        release["version"].getStr()
-      else:
-        name
-    if selector == "latest" or version.matchesNumericSelector(selector):
-      matches.add version
+  for name in index.keys:
+    if name == "master":
+      continue
+    if selector == "latest" or name.matchesNumericSelector(selector):
+      matches.add name
   if matches.len == 0:
     raise newException(ValueError, "release not found: " & selector)
   matches.sort(proc(a, b: string): int = compareVersions(b, a))
   matches[0]
+
+proc resolveZigStyle(selector, indexUrl: string): string =
+  if selector.isConcreteVersion:
+    return selector
+  newestZigStyleRelease(parseJson(fetchText(indexUrl)), selector)
 
 proc resolveInstallVersion*(tool: ToolId, selector: string): string =
   if selector.len == 0:
