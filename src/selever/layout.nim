@@ -36,7 +36,7 @@ proc shimDir*(): string =
 proc fsComponent*(value: string): string =
   const Hex = "0123456789ABCDEF"
   for ch in value:
-    if ch.isAlphaNumeric or ch in {'-', '_', '.'}:
+    if ch.isAlphaNumeric or ch in {'-', '_', '.', '+'}:
       result.add ch
     else:
       let byte = ord(ch)

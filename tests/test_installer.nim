@@ -74,6 +74,10 @@ suite "installer":
     check resolveInstallVersion(
       parseToolId("java"), "temurin-21.0.8+9") == "21.0.8+9"
 
+  test "install names keep plus signs":
+    check fsComponent("21.0.13+9") == "21.0.13+9"
+    check fsComponent("lts/iron") == "lts%2Firon"
+
   test "a package requires exactly one explicit pair":
     expect ValueError:
       discard installAll([
