@@ -78,18 +78,16 @@ sha256() {
 
 echo "==> Lua $version source"
 archive=lua-$version.tar.gz
-fetch "https://www.lua.org/ftp/$archive" "$work/$archive"
-# lua.org/ftp lists every tarball with its SHA-256 in a following cell.
-expected=$(curl -fsSL "${curl_retry[@]}" https://www.lua.org/ftp/ | awk -v file="$archive" '
-  index($0, "HREF=\"" file "\"") { found = 1 }
-  found && match($0, /CLASS="sum">[0-9a-f]+</) {
-    print substr($0, RSTART + 12, RLENGTH - 13)
-    exit
-  }')
-[ -n "$expected" ] || die "no SHA-256 for $archive on lua.org"
-actual=$(sha256 "$work/$archive")
-[ "$actual" = "$expected" ] || die "SHA-256 mismatch for $archive: $actual != $expected"
-tar -xzf "$work/$archive" -C "$work"
+# LUA_SOURCES holds tarballs fetch-lua.sh verified; otherwise fetch now.
+sources=${LUA_SOURCES:-}
+if [ -z "$sources" ] || [ ! -f "$sources/$archive" ]; then
+  sources=$work/sources
+  bash "$here/fetch-lua.sh" "$sources" "$version"
+fi
+actual=$(sha256 "$sources/$archive")
+[ "$actual" = "$(cat "$sources/$archive.sha256")" ] ||
+  die "SHA-256 mismatch for $archive"
+tar -xzf "$sources/$archive" -C "$work"
 src=$work/lua-$version/src
 
 # ------------------------------------------------------------------ patches
