@@ -1,21 +1,17 @@
-# Binaries
+# Nim build output
 /selever
-/fetchver
-/globver
-
-# Test binary, built with `go test -c`
-*.test
-
-# Output of go build
+/selever.exe
+/bin/
 *.exe
 *.exe~
-
-# Go workspace
-go.work
-go.work.sum
-
-# Dependency directories
-vendor/
+*.pdb
+/tests/test_toolversions
+/tests/test_dispatch
+/tests/test_installer
+/tests/test_cli
+/bench/shim_latency
+/nimcache/
+/nimbledeps/
 
 # IDE
 .idea/
@@ -23,3 +19,5 @@ vendor/
 *.swp
 *.swo
 *~
+nimble.develop
+nimble.paths

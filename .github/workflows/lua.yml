@@ -1,0 +1,97 @@
+name: lua bundles
+
+# Builds the Lua + LuaRocks bundles selever installs. Publishing to
+# s3.orkward.dev is done by hand from the run's artifacts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      lua_versions:
+        description: Lua versions, separated by spaces
+        default: "5.1.5 5.4.8 5.5.1"
+      luarocks_version:
+        description: LuaRocks version bundled with every Lua
+        default: "3.13.0"
+      base_url:
+        description: Where the bundles will be published
+        default: "https://s3.orkward.dev/selever/lua"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-latest
+          - platform: linux-x86_64
+            runner: ubuntu-22.04
+          - platform: macos-arm64
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: ${{ matrix.platform == 'windows-x64' && 'msys2 {0}' || 'bash' }}
+    env:
+      LUA_VERSIONS: ${{ inputs.lua_versions }}
+      LUAROCKS_VERSION: ${{ inputs.luarocks_version }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: matrix.platform == 'windows-x64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            curl
+            unzip
+            mingw-w64-ucrt-x86_64-gcc
+      - name: Build
+        run: |
+          for version in $LUA_VERSIONS; do
+            bash scripts/build-lua.sh "$version" "$PLATFORM" "$LUAROCKS_VERSION" dist
+          done
+      - name: Test
+        run: |
+          # What selever exec sets for a gcc toolchain.
+          if [ "$PLATFORM" = windows-x64 ]; then export CC=gcc; fi
+          bash scripts/test-lua.sh dist "$PLATFORM"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lua-${{ matrix.platform }}
+          path: dist/
+          if-no-files-found: error
+
+  index:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ inputs.base_url }}
+      LUAROCKS_VERSION: ${{ inputs.luarocks_version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Index entries
+        working-directory: dist
+        run: |
+          for checksum in lua-*.tar.gz.sha256; do
+            read -r sum file < "$checksum"
+            name=${file%.tar.gz}
+            rest=${name#lua-}
+            version=${rest%%-*}
+            platform=${rest#*-}
+            jq -n --arg v "$version" --arg p "$platform" --arg rocks "$LUAROCKS_VERSION" \
+              --arg url "$BASE_URL/$version/$file" --arg sum "$sum" \
+              '{($v): {luarocks: $rocks, files: {($p): {url: $url, sha256: $sum}}}}'
+          done | jq -s 'reduce .[] as $entry ({}; . * $entry)' > index-entries.json
+          cat index-entries.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lua-index-entries
+          path: dist/index-entries.json
