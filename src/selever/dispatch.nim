@@ -5,12 +5,15 @@ when defined(windows):
 else:
   import std/posix
 
-import ./[catalog, layout, namemap, processutil, resolver, toolversions]
+import ./[catalog, layout, luarocks, namemap, processutil, resolver,
+  toolversions]
 
 type
   ResolvedCommand* = object
     executable*: string
     arguments*: seq[string]
+    ## Environment variables the command needs.
+    variables*: seq[(string, string)]
     tool*: string
     version*: string
 
@@ -54,6 +57,7 @@ proc handlesBuiltinCommand(tool: ToolId, command: string): bool =
   of tkGolang: command in ["go", "gofmt"]
   of tkZig: command == "zig"
   of tkZls: command == "zls"
+  of tkLua: command in ["lua", "luac", "luarocks", "luarocks-admin"]
   else: false
 
 proc nodeScript(root, command: string): string =
@@ -69,6 +73,18 @@ proc nodeScript(root, command: string): string =
 proc installedBuiltin(tool: ToolId, version,
                       command: string): ResolvedCommand =
   let root = runtimeInstallDir(tool, version)
+  if tool.kind == tkLua and command in ["luarocks", "luarocks-admin"]:
+    let luarocks = luarocksCommand(root, command)
+    if luarocks.isInstalled:
+      return ResolvedCommand(
+        executable: luarocks.executable,
+        arguments: luarocks.arguments,
+        variables: luarocks.variables,
+        tool: tool.name,
+        version: version,
+      )
+    return
+
   if tool.kind == tkNodejs and command in ["npm", "npx", "corepack"]:
     let script = nodeScript(root, command)
     let node = runtimeExecutable(tool, root)
@@ -153,6 +169,22 @@ proc resolvePackageCommand(command, startDir: string,
 
   let packageDir = packageInstallDir(tool, packageVersion, parentVersion)
   var executable = packageDir / entry.locator
+  if tool.kind == tkLuabin:
+    # bin/<command> links to the rock's Lua script.
+    if not fileExists(executable):
+      raise newException(ValueError,
+        command & ": package does not provide this command for the selected version")
+    return ResolvedCommand(
+      executable: runtimeExecutable(parent,
+        runtimeInstallDir(parent, parentVersion)),
+      arguments: @[
+        "-e",
+        luaTreePrelude(packageDir, luaShortVersion(parentVersion)),
+        executable,
+      ],
+      tool: tool.name,
+      version: pair.package,
+    )
   when defined(windows):
     if not executable.isExecutableFile:
       executable = executableIn(parentDir(executable), command)
@@ -220,6 +252,8 @@ proc resolveCommand*(command, startDir: string): ResolvedCommand =
 
 proc runResolved*(resolved: ResolvedCommand,
                   arguments: seq[string]): int =
+  for (name, value) in resolved.variables:
+    putEnv(name, value)
   when defined(windows):
     ignoreConsoleInterrupts()
     let process = startProcess(

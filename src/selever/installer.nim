@@ -2,8 +2,11 @@ import std/[json, os, strtabs, strutils, tables, uri]
 
 import ./[
   catalog,
+  environment,
+  execenv,
   layout,
   lockfile,
+  luarocks,
   msvc,
   namemap,
   processutil,
@@ -25,6 +28,9 @@ type
   InstallOptions* = object
     mode*: InstallMode
     dryRun*: bool
+    ## Where the tool version files are; luabin builds C modules with the
+    ## C toolchain selected there. Empty means the current directory.
+    startDir*: string
 
   InstalledSelection* = object
     tool*: ToolId
@@ -256,6 +262,40 @@ proc installZigStyle(toolName, version, indexUrl: string;
     stripTopDir,
   )
 
+proc luaArtifact*(index: JsonNode, version,
+                  platform: string): tuple[url, checksum: string] =
+  let files = index{version, "files"}
+  if files.isNil or files.kind != JObject:
+    raise newException(ValueError, "lua release not found: " & version)
+  if not files.hasKey(platform):
+    raise newException(ValueError,
+      "lua " & version & " has no bundle for " & platform)
+  (files[platform]["url"].getStr(), files[platform]["sha256"].getStr())
+
+proc installLua(version: string): string =
+  let tool = parseToolId("lua")
+  result = runtimeInstallDir(tool, version)
+  if runtimeComplete(tool, version):
+    return
+  var lock = acquireInstallLock(result & ".lock")
+  defer: lock.release()
+  if runtimeComplete(tool, version):
+    return
+  let indexText = cachedText(
+    LuaIndexUrl,
+    "lua",
+    "index-" & fsComponent(version) & ".json",
+  )
+  let artifact = luaArtifact(parseJson(indexText), version, luaPlatform())
+  result = installArchive(
+    tool,
+    version,
+    artifact.url,
+    artifact.url.rsplit('/', maxsplit = 1)[^1],
+    artifact.checksum,
+    stripTopDir = true,
+  )
+
 proc githubReleaseAsset(repository, tag: string,
                         matches: proc(name: string): bool):
                         tuple[url, name, checksum: string] =
@@ -334,6 +374,7 @@ proc installRuntime(tool: ToolId, version: string): string =
   of tkMsvc: installMsvc(version)
   of tkGcc: installGcc(version)
   of tkLlvmMingw: installLlvmMingw(version)
+  of tkLua: installLua(version)
   else: raise newException(ValueError, "not a runtime: " & tool.name)
 
 proc validatePackageName(package: string) =
@@ -522,6 +563,86 @@ proc installGoPackage(tool: ToolId, query, goVersion: string;
     removeDir(staging)
     raise
 
+proc rockDir(tree, shortVersion, rock: string): string =
+  ## <tree>/lib/luarocks/rocks-<V>/<rock>; LuaRocks lowercases rock names.
+  let rocks = tree / "lib" / "luarocks" / ("rocks-" & shortVersion)
+  for kind, path in walkDir(rocks):
+    if kind == pcDir and extractFilename(path).cmpIgnoreCase(rock) == 0:
+      return path
+  raise newException(ValueError, rock & " was not installed into " & rocks)
+
+proc installLuabin(tool: ToolId, query, luaVersion: string; force: bool;
+                   startDir: string): string =
+  ## Installs a rock and its dependencies into a tree of their own. bin/
+  ## links to the rock's scripts: LuaRocks' own wrappers hold the staging
+  ## path, and dispatch runs the scripts with this tree's module paths.
+  validatePackageName(tool.package)
+  let luaTool = parseToolId("lua")
+  let luaRoot = runtimeInstallDir(luaTool, luaVersion)
+  if not runtimeComplete(luaTool, luaVersion):
+    raise newException(ValueError, "Lua is not installed: " & luaVersion)
+
+  let parentRoot = packageParentRoot(tool, luaVersion)
+  var lock = acquireInstallLock(parentRoot / ".install.lock")
+  defer: lock.release()
+  let existing = resolvePackageLocal(tool, query, luaVersion)
+  if existing.len > 0 and not force:
+    return existing
+
+  let staging = parentRoot / (".staging-" & fsComponent(query))
+  removeDir(staging)
+  createDir(staging)
+  let luarocks = luarocksCommand(luaRoot)
+  if not luarocks.isInstalled:
+    raise newException(ValueError, "Lua " & luaVersion & " has no LuaRocks")
+  let environment = currentEnvironment()
+  execEnvironment(startDir).applyTo(environment)
+  for (name, value) in luarocks.variables:
+    environment[name] = value
+  var arguments = luarocks.arguments & @["--tree", staging, "install",
+    tool.package]
+  if query != "latest":
+    arguments.add query
+  try:
+    runChecked(luarocks.executable, arguments, environment)
+
+    let rock = rockDir(staging, luaShortVersion(luaVersion), tool.package)
+    var actual = ""
+    for kind, path in walkDir(rock):
+      if kind == pcDir:
+        if actual.len > 0:
+          raise newException(ValueError,
+            tool.package & " was installed in more than one version")
+        actual = extractFilename(path)
+    if actual.len == 0:
+      raise newException(ValueError,
+        tool.package & " did not report an installed version")
+
+    let binDir = staging / "bin"
+    removeDir(binDir)
+    createDir(binDir)
+    for kind, script in walkDir(rock / actual / "bin"):
+      if kind in {pcFile, pcLinkToFile}:
+        createSymlink(relativePath(script, binDir),
+          binDir / extractFilename(script))
+
+    let destination = packageInstallDir(tool, actual, luaVersion)
+    var nameMap = beginNameMapTransaction()
+    defer: nameMap.finishNameMapTransaction()
+    nameMap.reservePackageCommands(tool, staging)
+    createDir(parentDir(destination))
+    if dirExists(destination):
+      removeDir(staging)
+    else:
+      moveDir(staging, destination)
+    nameMap.registerPackageCommands(tool)
+    createPackageLink(tool, query, actual, luaVersion)
+    nameMap.commitNameMapTransaction()
+    return actual
+  except CatchableError:
+    removeDir(staging)
+    raise
+
 proc report(action, tool, request, resolved: string) =
   var line = action & " " & tool & " " & request
   if resolved.len > 0 and resolved != request:
@@ -626,6 +747,9 @@ proc installAll*(selections: openArray[ToolSelection],
         actual = installNpm(tool, pair.package, parentVersion, refresh)
       of tkGoPackage:
         actual = installGoPackage(tool, pair.package, parentVersion, refresh)
+      of tkLuabin:
+        actual = installLuabin(tool, pair.package, parentVersion, refresh,
+          if options.startDir.len > 0: options.startDir else: getCurrentDir())
       else:
         discard
 

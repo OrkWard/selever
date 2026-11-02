@@ -9,6 +9,8 @@ const
   JavaPageSize* = 50
   ZigIndexUrl* = "https://ziglang.org/download/index.json"
   ZlsIndexUrl* = "https://releases.zigtools.org/v1/zls/index.json"
+  # Lua + LuaRocks bundles built by scripts/build-lua.sh.
+  LuaIndexUrl* = "https://s3.orkward.dev/selever/lua/index.json"
 
 proc runtimeExecutable*(tool: ToolId, root: string): string =
   let suffix = when defined(windows): ".exe" else: ""
@@ -28,6 +30,8 @@ proc runtimeExecutable*(tool: ToolId, root: string): string =
     root / "bin" / ("gcc" & suffix)
   of tkLlvmMingw:
     root / "bin" / ("clang" & suffix)
+  of tkLua:
+    root / "bin" / ("lua" & suffix)
   else:
     ""
 
@@ -299,6 +303,33 @@ proc newestZigStyleRelease*(index: JsonNode, selector: string): string =
   matches.sort(proc(a, b: string): int = compareVersions(b, a))
   matches[0]
 
+proc luaPlatform*(): string =
+  ## The platform name of selever's Lua bundles.
+  when defined(windows) and hostCPU == "amd64": "windows-x64"
+  elif defined(linux) and hostCPU == "amd64": "linux-x86_64"
+  elif defined(macosx) and hostCPU == "arm64": "macos-arm64"
+  else: raise newException(ValueError, "no Lua bundles for this platform")
+
+proc newestLuaRelease*(index: JsonNode, selector, platform: string): string =
+  ## The newest version matching latest or a version prefix that has a
+  ## bundle for platform.
+  var matches: seq[string]
+  for version, release in index.pairs:
+    let files = release{"files"}
+    if files.isNil or files.kind != JObject or not files.hasKey(platform):
+      continue
+    if selector == "latest" or version.matchesNumericSelector(selector):
+      matches.add version
+  if matches.len == 0:
+    raise newException(ValueError, "lua release not found: " & selector)
+  matches.sort(proc(a, b: string): int = compareVersions(b, a))
+  matches[0]
+
+proc resolveLua(selector: string): string =
+  if selector.isConcreteVersion:
+    return selector
+  newestLuaRelease(parseJson(fetchText(LuaIndexUrl)), selector, luaPlatform())
+
 proc resolveZigStyle(selector, indexUrl: string): string =
   if selector.isConcreteVersion:
     return selector
@@ -318,6 +349,8 @@ proc resolveInstallVersion*(tool: ToolId, selector: string): string =
     resolveZigStyle(selector, ZigIndexUrl)
   of tkZls:
     resolveZigStyle(selector, ZlsIndexUrl)
+  of tkLua:
+    resolveLua(selector)
   of tkMsvc, tkGcc, tkLlvmMingw:
     # Full names only: no latest, no prefixes, nothing to look up.
     tool.storedSelector(selector)

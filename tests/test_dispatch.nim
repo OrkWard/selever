@@ -1,6 +1,6 @@
-import std/[os, tempfiles, unittest]
+import std/[os, strutils, tempfiles, unittest]
 
-import ../src/selever/[catalog, dispatch, layout, resolver]
+import ../src/selever/[catalog, dispatch, layout, luarocks, resolver]
 
 when not defined(windows):
   import ../src/selever/namemap
@@ -86,6 +86,68 @@ suite "dispatcher":
     let resolved = resolveCommand("tsc", root)
     check resolved.executable == runtimeExecutable(nodeTool, nodeRoot)
     check resolved.arguments == @[packageRoot / "bin" / "tsc"]
+
+  test "runs luarocks with the bundle's configuration":
+    let root = createTempDir("selever-dispatch-", "")
+    defer: removeDir(root)
+    defer: clearRoots()
+    configureRoots(root)
+    writeFile(root / ".tool-versions", "lua 5.4\n")
+
+    let tool = parseToolId("lua")
+    let install = createRuntime(tool, "5.4.8")
+    createRuntimeLinks(tool, "5.4", "5.4.8")
+    when defined(windows):
+      writeExecutable(install / "bin" / "luarocks.exe")
+    else:
+      writeFile(install / "bin" / "luarocks", "")
+
+    let resolved = resolveCommand("luarocks", root)
+    when defined(windows):
+      check resolved.executable == install / "bin" / "luarocks.exe"
+      check resolved.arguments == @["--lua-dir=" & install]
+    else:
+      check resolved.executable == install / "bin" / "lua"
+      check resolved.arguments ==
+        @[install / "bin" / "luarocks", "--lua-dir=" & install]
+    check resolved.variables ==
+      @[("LUAROCKS_SYSCONFDIR", install / "etc" / "luarocks")]
+    check resolveCommand("lua", root).executable ==
+      runtimeExecutable(tool, install)
+
+  test "runs a luabin command with its tree's modules":
+    let root = createTempDir("selever-dispatch-", "")
+    defer: removeDir(root)
+    defer: clearRoots()
+    configureRoots(root)
+    writeFile(root / ".tool-versions", "luabin:luacheck 5.4:1.2.0-1\n")
+
+    let luaTool = parseToolId("lua")
+    let luaRoot = createRuntime(luaTool, "5.4.8")
+    createRuntimeLinks(luaTool, "5.4", "5.4.8")
+
+    let tool = parseToolId("luabin:luacheck")
+    let packageRoot = packageInstallDir(tool, "1.2.0-1", "5.4.8")
+    let script = packageRoot / "lib" / "luarocks" / "rocks-5.4" /
+      "luacheck" / "1.2.0-1" / "bin" / "luacheck"
+    createDir(parentDir(script))
+    writeExecutable(script, "#!/usr/bin/env lua\n")
+    createDir(packageRoot / "bin")
+    createSymlink(relativePath(script, packageRoot / "bin"),
+      packageRoot / "bin" / "luacheck")
+    createPackageLink(tool, "1.2.0-1", "1.2.0-1", "5.4.8")
+    createDir(dataRoot())
+    writeFile(nameMapPath(), "luacheck luabin:luacheck bin/luacheck\n")
+
+    let resolved = resolveCommand("luacheck", root)
+    check resolved.executable == runtimeExecutable(luaTool, luaRoot)
+    check resolved.arguments == @[
+      "-e",
+      luaTreePrelude(packageRoot, "5.4"),
+      packageRoot / "bin" / "luacheck",
+    ]
+    check luaTreePrelude(packageRoot, "5.4").contains(
+      packageRoot / "share" / "lua" / "5.4" / "?.lua")
 
   test "resolves a Go package executable through name-map":
     let root = createTempDir("selever-dispatch-", "")

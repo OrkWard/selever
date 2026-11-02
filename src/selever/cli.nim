@@ -30,13 +30,15 @@ Supported tools and selectors:
   msvc          <toolset>[-x64|-x86|-arm64], e.g. 14.44 or 14.44-arm64
   gcc           <winlibs release tag>, e.g. 16.2.0posix-14.0.0-ucrt-r1
   llvm-mingw    <llvm-mingw release tag>, e.g. 20261020
+  lua           latest | <version-prefix>, Lua with LuaRocks
   npm:<package> <node-selector>:<package-selector>
   gopkg:<module> <go-selector>:<package-selector>
+  luabin:<rock> <lua-selector>:<rock-version>|latest
 
-nodejs, golang, java, zig and zls also accept system and path:<directory>.
+nodejs, golang, java, zig, zls and lua also accept system and path:<directory>.
 msvc, gcc and llvm-mingw are Windows-only and accept only full names.
 Version prefixes select the latest matching release; exact versions are immutable.
-Package selectors are passed unchanged to npm or go install.
+Package selectors are passed unchanged to npm, go install or luarocks install.
 Install reuses complete local selectors. Update refreshes mutable selectors.
 Shim execution never installs or accesses the network.
 java, msvc, gcc and llvm-mingw have no shims. Exec runs a command with their
@@ -56,7 +58,7 @@ proc runInstall(mode: InstallMode, dryRun: bool): int =
     return QuitFailure
   let installed = installAll(
     selections,
-    InstallOptions(mode: mode, dryRun: dryRun),
+    InstallOptions(mode: mode, dryRun: dryRun, startDir: getCurrentDir()),
   )
   if not dryRun:
     syncShims(installed)

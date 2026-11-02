@@ -23,6 +23,8 @@ proc runtimeCommands(installed: InstalledSelection): seq[string] =
     result.add "zig"
   of tkZls:
     result.add "zls"
+  of tkLua:
+    result.add ["lua", "luac", "luarocks", "luarocks-admin"]
   else:
     discard
 
