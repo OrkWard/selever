@@ -74,6 +74,25 @@ cp build-binary/luarocks.exe "$output/linux-x86_64/luarocks"
 cp build-binary/luarocks-admin.exe "$output/linux-x86_64/luarocks-admin"
 
 echo "==> windows-x64"
+# Fetch the dependency sources binary/Makefile.windows would fetch, with
+# retries and from where old versions stay.
+setting() {
+  sed -n "s/^$1=//p" binary/Makefile.windows
+}
+deps=build-windows-deps-x86_64-w64-mingw32
+mkdir -p "$deps"
+lua_version=$(setting LIBLUA_VERSION)
+openssl_version=$(setting OPENSSL_VERSION)
+zlib_version=$(setting ZLIB_VERSION)
+bzip2_version=$(setting BZIP2_VERSION)
+fetch "https://www.lua.org/ftp/lua-$lua_version.tar.gz" \
+  "$deps/lua-$lua_version.tar.gz"
+fetch "https://github.com/openssl/openssl/releases/download/OpenSSL_$(echo "$openssl_version" | tr . _)/openssl-$openssl_version.tar.gz" \
+  "$deps/openssl-$openssl_version.tar.gz"
+fetch "https://zlib.net/fossils/zlib-$zlib_version.tar.gz" \
+  "$deps/zlib-$zlib_version.tar.gz"
+fetch "https://sourceware.org/pub/bzip2/bzip2-$bzip2_version.tar.gz" \
+  "$deps/bzip2-$bzip2_version.tar.gz"
 make windows-binary-64 MINGW_SYSROOT=/usr/x86_64-w64-mingw32
 mkdir -p "$output/windows-x64"
 cp build-windows-binary-x86_64-w64-mingw32/luarocks.exe "$output/windows-x64/"
