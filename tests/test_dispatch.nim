@@ -87,7 +87,7 @@ suite "dispatcher":
     check resolved.executable == runtimeExecutable(nodeTool, nodeRoot)
     check resolved.arguments == @[packageRoot / "bin" / "tsc"]
 
-  test "runs luarocks with the bundle's configuration":
+  test "runs the bundle's luarocks":
     let root = createTempDir("selever-dispatch-", "")
     defer: removeDir(root)
     defer: clearRoots()
@@ -100,18 +100,18 @@ suite "dispatcher":
     when defined(windows):
       writeExecutable(install / "bin" / "luarocks.exe")
     else:
-      writeFile(install / "bin" / "luarocks", "")
+      writeExecutable(install / "bin" / "luarocks")
 
     let resolved = resolveCommand("luarocks", root)
     when defined(windows):
       check resolved.executable == install / "bin" / "luarocks.exe"
-      check resolved.arguments == @["--lua-dir=" & install]
-    else:
+      check resolved.arguments.len == 0
+    elif defined(macosx):
       check resolved.executable == install / "bin" / "lua"
-      check resolved.arguments ==
-        @[install / "bin" / "luarocks", "--lua-dir=" & install]
-    check resolved.variables ==
-      @[("LUAROCKS_SYSCONFDIR", install / "etc" / "luarocks")]
+      check resolved.arguments == @[install / "bin" / "luarocks"]
+    else:
+      check resolved.executable == install / "bin" / "luarocks"
+      check resolved.arguments.len == 0
     check resolveCommand("lua", root).executable ==
       runtimeExecutable(tool, install)
 

@@ -597,8 +597,6 @@ proc installLuabin(tool: ToolId, query, luaVersion: string; force: bool;
     raise newException(ValueError, "Lua " & luaVersion & " has no LuaRocks")
   let environment = currentEnvironment()
   execEnvironment(startDir).applyTo(environment)
-  for (name, value) in luarocks.variables:
-    environment[name] = value
   var arguments = luarocks.arguments & @["--tree", staging, "install",
     tool.package]
   if query != "latest":

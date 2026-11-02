@@ -12,8 +12,6 @@ type
   ResolvedCommand* = object
     executable*: string
     arguments*: seq[string]
-    ## Environment variables the command needs.
-    variables*: seq[(string, string)]
     tool*: string
     version*: string
 
@@ -79,7 +77,6 @@ proc installedBuiltin(tool: ToolId, version,
       return ResolvedCommand(
         executable: luarocks.executable,
         arguments: luarocks.arguments,
-        variables: luarocks.variables,
         tool: tool.name,
         version: version,
       )
@@ -252,8 +249,6 @@ proc resolveCommand*(command, startDir: string): ResolvedCommand =
 
 proc runResolved*(resolved: ResolvedCommand,
                   arguments: seq[string]): int =
-  for (name, value) in resolved.variables:
-    putEnv(name, value)
   when defined(windows):
     ignoreConsoleInterrupts()
     let process = startProcess(

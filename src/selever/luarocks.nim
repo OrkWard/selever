@@ -1,5 +1,6 @@
 ## How selever runs LuaRocks and luabin commands of a Lua bundle built by
-## scripts/build-lua.sh.
+## scripts/build-lua.sh. The bundle's LuaRocks finds its configuration and
+## Lua from where it runs, so it needs no flags or environment.
 
 import std/os
 
@@ -9,27 +10,21 @@ type LuaRocksCommand* = object
   executable*: string
   ## Arguments before the user's.
   arguments*: seq[string]
-  ## Environment variables to set.
-  variables*: seq[(string, string)]
 
 proc luarocksCommand*(root: string; command = "luarocks"): LuaRocksCommand =
-  ## command is luarocks or luarocks-admin. The configuration in
-  ## <root>/etc/luarocks installs rocks into the bundle, and --lua-dir
-  ## keeps LuaRocks from probing every Lua on PATH.
+  ## command is luarocks or luarocks-admin.
   when defined(windows):
     result.executable = root / "bin" / (command & ".exe")
-  else:
-    # Outside Windows the bundle runs LuaRocks' sources with its lua.
+  elif defined(macosx):
+    # No standalone LuaRocks for macOS: the bundle runs its sources.
     result.executable = root / "bin" / "lua"
     result.arguments.add root / "bin" / command
-  result.arguments.add "--lua-dir=" & root
-  result.variables.add ("LUAROCKS_SYSCONFDIR", root / "etc" / "luarocks")
+  else:
+    result.executable = root / "bin" / command
 
 proc isInstalled*(command: LuaRocksCommand): bool =
-  when defined(windows):
-    command.executable.isExecutableFile
-  else:
-    command.executable.isExecutableFile and fileExists(command.arguments[0])
+  command.executable.isExecutableFile and
+    (command.arguments.len == 0 or fileExists(command.arguments[0]))
 
 proc luaTreePrelude*(tree, shortVersion: string): string =
   ## Lua code that puts the modules of a rocks tree ahead of the defaults.
