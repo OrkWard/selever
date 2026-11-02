@@ -10,7 +10,7 @@
 #   bin/                 lua, luac, luarocks, luarocks-admin (and lua5X.dll)
 #   include/             lua.h luaconf.h lualib.h lauxlib.h lua.hpp
 #   lib/                 liblua.a (not on Windows)
-#   share/lua/<V>/       Lua modules; also LuaRocks itself on macOS
+#   share/lua/<V>/       Lua modules; also LuaRocks itself on Linux and macOS
 #   lib/lua/<V>/         C modules
 #   etc/luarocks/        LuaRocks configuration
 #
@@ -210,29 +210,19 @@ cp "$work/lua-$version/doc/readme.html" "$root/lua-readme.html" 2> /dev/null || 
 echo "==> LuaRocks $luarocks_version"
 releases=https://luarocks.github.io/luarocks/releases
 case $platform in
-  windows-x64 | linux-x86_64)
-    if [ "$platform" = windows-x64 ]; then
-      zip=luarocks-$luarocks_version-windows-64.zip
-      suffix=.exe
-    else
-      zip=luarocks-$luarocks_version-linux-x86_64.zip
-      suffix=
-    fi
+  windows-x64)
+    zip=luarocks-$luarocks_version-windows-64.zip
     fetch "$releases/$zip" "$work/$zip"
-    if command -v unzip > /dev/null; then
-      unzip -q "$work/$zip" -d "$work/luarocks"
-    else
-      python3 -m zipfile -e "$work/$zip" "$work/luarocks"
-    fi
+    unzip -q "$work/$zip" -d "$work/luarocks"
     for tool in luarocks luarocks-admin; do
-      found=$(find "$work/luarocks" -type f -name "$tool$suffix" | head -n 1)
-      [ -n "$found" ] || die "$zip has no $tool$suffix"
-      cp "$found" "$root/bin/$tool$suffix"
-      chmod +x "$root/bin/$tool$suffix"
+      found=$(find "$work/luarocks" -type f -name "$tool.exe" | head -n 1)
+      [ -n "$found" ] || die "$zip has no $tool.exe"
+      cp "$found" "$root/bin/$tool.exe"
     done
     ;;
-  macos-arm64)
-    # No standalone binary for macOS: run LuaRocks' sources with this Lua.
+  *)
+    # The Linux binary needs a recent glibc and there is none for macOS:
+    # run LuaRocks' sources with this Lua.
     tarball=luarocks-$luarocks_version.tar.gz
     fetch "$releases/$tarball" "$work/$tarball"
     tar -xzf "$work/$tarball" -C "$work"

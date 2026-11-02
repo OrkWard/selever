@@ -35,16 +35,11 @@ for archive in "$dist"/lua-*-"$platform".tar.gz; do
       lua=$bundle/bin/lua.exe
       luarocks=("$bundle/bin/luarocks.exe" "$lua_dir")
       ;;
-    macos-arm64)
+    *)
       lua=$bundle/bin/lua
       luarocks=("$lua" "$bundle/bin/luarocks" "$lua_dir")
       ;;
-    *)
-      lua=$bundle/bin/lua
-      luarocks=("$bundle/bin/luarocks" "$lua_dir")
-      ;;
   esac
-  "${luarocks[@]}" config platforms || true
   "${luarocks[@]}" install lpeg
   "${luarocks[@]}" install inspect
   "$lua" -e '
