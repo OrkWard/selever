@@ -16,32 +16,32 @@ platform=$2
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-native() {
-  # Windows programs need Windows paths.
-  if [ "$platform" = windows-x64 ]; then cygpath -m "$1"; else echo "$1"; fi
-}
-
 for archive in "$dist"/lua-*-"$platform".tar.gz; do
   name=$(basename "$archive" .tar.gz)
   echo "==> $name"
   tar -xzf "$archive" -C "$work"
   bundle=$work/$name
-  # How selever runs LuaRocks.
-  export LUAROCKS_SYSCONFDIR
-  LUAROCKS_SYSCONFDIR=$(native "$bundle/etc/luarocks")
-  lua_dir=--lua-dir=$(native "$bundle")
+  # LuaRocks runs as is: no flags, no environment.
   case $platform in
     windows-x64)
       lua=$bundle/bin/lua.exe
-      luarocks=("$bundle/bin/luarocks.exe" "$lua_dir")
+      luarocks=("$bundle/bin/luarocks.exe")
+      ;;
+    linux-x86_64)
+      lua=$bundle/bin/lua
+      luarocks=("$bundle/bin/luarocks")
       ;;
     *)
       lua=$bundle/bin/lua
-      luarocks=("$lua" "$bundle/bin/luarocks" "$lua_dir")
+      luarocks=("$lua" "$bundle/bin/luarocks")
       ;;
   esac
   "${luarocks[@]}" install lpeg
   "${luarocks[@]}" install inspect
+  if [ "$platform" != macos-arm64 ]; then
+    # Started through PATH from elsewhere, it still finds its bundle.
+    (cd / && PATH="$bundle/bin:$PATH" luarocks list | grep -q inspect)
+  fi
   "$lua" -e '
     local lpeg = require("lpeg")
     local inspect = require("inspect")

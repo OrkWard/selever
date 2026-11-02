@@ -20,7 +20,28 @@ permissions:
   contents: read
 
 jobs:
+  luarocks:
+    # Standalone LuaRocks for Linux and Windows, built like LuaRocks'
+    # releases but finding their paths in the bundle they run in.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq mingw-w64 libssl-dev zlib1g-dev libbz2-dev
+      - name: Build
+        env:
+          LUAROCKS_VERSION: ${{ inputs.luarocks_version }}
+        run: bash scripts/build-luarocks.sh "$LUAROCKS_VERSION" luarocks-bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: luarocks-bin
+          path: luarocks-bin/
+          if-no-files-found: error
+
   build:
+    needs: luarocks
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +62,10 @@ jobs:
       PLATFORM: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: luarocks-bin
+          path: luarocks-bin
       - if: matrix.platform == 'windows-x64'
         id: msys2
         uses: msys2/setup-msys2@v2
@@ -54,7 +79,8 @@ jobs:
       - name: Build
         run: |
           for version in $LUA_VERSIONS; do
-            bash scripts/build-lua.sh "$version" "$PLATFORM" "$LUAROCKS_VERSION" dist
+            bash scripts/build-lua.sh "$version" "$PLATFORM" "$LUAROCKS_VERSION" \
+              dist luarocks-bin
           done
       - name: Test
         # Git Bash on Windows: a plain environment, not MSYS2's, in which
@@ -85,6 +111,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: lua-*
           merge-multiple: true
       - name: Index entries
         working-directory: dist

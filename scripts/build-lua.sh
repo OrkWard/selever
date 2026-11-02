@@ -1,29 +1,33 @@
 #!/usr/bin/env bash
 # Builds a relocatable Lua + LuaRocks bundle for selever.
 #
-#   scripts/build-lua.sh <lua-version> <platform> <luarocks-version> <output-dir>
+#   scripts/build-lua.sh <lua-version> <platform> <luarocks-version> \
+#     <output-dir> [<luarocks-binaries>]
 #
 # Platforms: windows-x64 (MSYS2 UCRT64 gcc), linux-x86_64, macos-arm64.
 # Writes <output-dir>/lua-<version>-<platform>.tar.gz and its .sha256.
+# Windows and Linux bundles take LuaRocks from <luarocks-binaries>/<platform>,
+# built by build-luarocks.sh; macOS bundles run LuaRocks' sources.
 #
 # Bundle layout, under lua-<version>-<platform>/:
 #   bin/                 lua, luac, luarocks, luarocks-admin (and lua5X.dll)
 #   include/             lua.h luaconf.h lualib.h lauxlib.h lua.hpp
 #   lib/                 liblua.a (not on Windows)
-#   share/lua/<V>/       Lua modules; also LuaRocks itself on Linux and macOS
+#   share/lua/<V>/       Lua modules; also LuaRocks itself on macOS
 #   lib/lua/<V>/         C modules
 #   etc/luarocks/        LuaRocks configuration
 #
 # Lua resolves "!" in its default package paths to the directory of the
 # running executable, so modules installed by LuaRocks into the bundle are
-# found without LUA_PATH or LUA_INIT. selever runs LuaRocks as
-#   LUAROCKS_SYSCONFDIR=<bundle>/etc/luarocks luarocks --lua-dir=<bundle> ...
-# --lua-dir keeps it from probing every Lua on PATH.
+# found without LUA_PATH or LUA_INIT. LuaRocks' hardcoded module
+# (scripts/lua/hardcoded.lua) finds the bundle from where LuaRocks runs, so
+# bin/luarocks works as is and installs rocks into the bundle.
 
 set -euo pipefail
 
-if [ $# -ne 4 ]; then
-  echo "usage: $0 <lua-version> <platform> <luarocks-version> <output-dir>" >&2
+if [ $# -lt 4 ] || [ $# -gt 5 ]; then
+  echo "usage: $0 <lua-version> <platform> <luarocks-version> <output-dir>" \
+    "[<luarocks-binaries>]" >&2
   exit 2
 fi
 
@@ -31,6 +35,7 @@ version=$1
 platform=$2
 luarocks_version=$3
 output=$4
+binaries=${5:-}
 
 here=$(cd "$(dirname "$0")" && pwd)
 short=$(echo "$version" | cut -d. -f1-2)
@@ -208,68 +213,48 @@ cp "$work/lua-$version/doc/readme.html" "$root/lua-readme.html" 2> /dev/null || 
 # ------------------------------------------------------------------ luarocks
 
 echo "==> LuaRocks $luarocks_version"
-releases=https://luarocks.github.io/luarocks/releases
 case $platform in
-  windows-x64)
-    zip=luarocks-$luarocks_version-windows-64.zip
-    fetch "$releases/$zip" "$work/$zip"
-    unzip -q "$work/$zip" -d "$work/luarocks"
+  windows-x64 | linux-x86_64)
+    [ -n "$binaries" ] || die "$platform needs the LuaRocks binaries directory"
+    if [ "$platform" = windows-x64 ]; then suffix=.exe; else suffix=; fi
     for tool in luarocks luarocks-admin; do
-      found=$(find "$work/luarocks" -type f -name "$tool.exe" | head -n 1)
-      [ -n "$found" ] || die "$zip has no $tool.exe"
-      cp "$found" "$root/bin/$tool.exe"
+      cp "$binaries/$platform/$tool$suffix" "$root/bin/$tool$suffix"
+      chmod +x "$root/bin/$tool$suffix"
     done
     ;;
-  *)
-    # The Linux binary needs a recent glibc and there is none for macOS:
-    # run LuaRocks' sources with this Lua.
+  macos-arm64)
+    # No standalone binary for macOS: run LuaRocks' sources with this Lua.
     tarball=luarocks-$luarocks_version.tar.gz
-    fetch "$releases/$tarball" "$work/$tarball"
+    fetch "https://luarocks.github.io/luarocks/releases/$tarball" "$work/$tarball"
     tar -xzf "$work/$tarball" -C "$work"
     lrsrc=$work/luarocks-$luarocks_version/src
     cp -R "$lrsrc/luarocks" "$root/share/lua/$short/"
     if [ "$short" = 5.1 ] && [ -d "$lrsrc/compat53" ]; then
       cp -R "$lrsrc/compat53" "$root/share/lua/$short/"
     fi
+    {
+      echo "local static = {}"
+      cat "$here/lua/hardcoded.lua"
+    } > "$root/share/lua/$short/luarocks/core/hardcoded.lua"
     for tool in luarocks luarocks-admin; do
-      {
-        echo "-- selever: run with the bundle's lua; configuration is in"
-        echo "-- <bundle>/etc/luarocks unless LUAROCKS_SYSCONFDIR says otherwise."
-        echo 'local bundle = arg[0]:gsub("[/\\][^/\\]*$", ""):gsub("[/\\][^/\\]*$", "")'
-        echo 'package.loaded["luarocks.core.hardcoded"] = { SYSCONFDIR = bundle .. "/etc/luarocks" }'
-        tail -n +2 "$lrsrc/bin/$tool"
-      } > "$root/bin/$tool"
+      cp "$lrsrc/bin/$tool" "$root/bin/$tool"
     done
     ;;
 esac
 
 if [ "$platform" = windows-x64 ]; then
-  lualib="   LUALIB = \"$dll\","
-  libdir=bin
-  interpreter=lua.exe
+  lualib="variables.LUALIB = \"$dll\""
 else
   lualib=""
-  libdir=lib
-  interpreter=lua
 fi
 cat > "$root/etc/luarocks/config-$short.lua" << EOF
--- LuaRocks configuration of a selever Lua bundle. selever sets
--- LUAROCKS_SYSCONFDIR to <bundle>/etc/luarocks and passes --lua-dir.
--- Rocks go into the bundle, where its lua looks for modules.
-local bundle = os_getenv("LUAROCKS_SYSCONFDIR")
-   :gsub("[/\\\\]+$", ""):gsub("[/\\\\][^/\\\\]+[/\\\\][^/\\\\]+$", "")
-
+-- LuaRocks configuration of a selever Lua bundle. LuaRocks' hardcoded
+-- module sets variables.LUA_DIR to the bundle. Rocks go into the bundle,
+-- where its lua looks for modules.
 rocks_trees = {
-   { name = "bundle", root = bundle },
+   { name = "bundle", root = variables.LUA_DIR },
 }
-variables = {
-   LUA_DIR = bundle,
-   LUA_BINDIR = bundle .. "/bin",
-   LUA_INCDIR = bundle .. "/include",
-   LUA_LIBDIR = bundle .. "/$libdir",
-   LUA = bundle .. "/bin/$interpreter",
 $lualib
-}
 EOF
 
 # ------------------------------------------------------------------ check
