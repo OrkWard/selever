@@ -16,8 +16,9 @@
 #
 # Lua resolves "!" in its default package paths to the directory of the
 # running executable, so modules installed by LuaRocks into the bundle are
-# found without LUA_PATH or LUA_INIT. LuaRocks reads its configuration from
-# LUAROCKS_SYSCONFDIR, which selever sets to <bundle>/etc/luarocks.
+# found without LUA_PATH or LUA_INIT. selever runs LuaRocks as
+#   LUAROCKS_SYSCONFDIR=<bundle>/etc/luarocks luarocks --lua-dir=<bundle> ...
+# --lua-dir keeps it from probing every Lua on PATH.
 
 set -euo pipefail
 
@@ -54,8 +55,10 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 root=$work/$name
 
+curl_retry=(--retry 5 --retry-all-errors --retry-delay 3)
+
 fetch() {
-  curl -fsSL --retry 3 -o "$2" "$1"
+  curl -fsSL "${curl_retry[@]}" -o "$2" "$1"
 }
 
 sha256() {
@@ -72,7 +75,7 @@ echo "==> Lua $version source"
 archive=lua-$version.tar.gz
 fetch "https://www.lua.org/ftp/$archive" "$work/$archive"
 # lua.org/ftp lists every tarball with its SHA-256 in a following cell.
-expected=$(curl -fsSL --retry 3 https://www.lua.org/ftp/ | awk -v file="$archive" '
+expected=$(curl -fsSL "${curl_retry[@]}" https://www.lua.org/ftp/ | awk -v file="$archive" '
   index($0, "HREF=\"" file "\"") { found = 1 }
   found && match($0, /CLASS="sum">[0-9a-f]+</) {
     print substr($0, RSTART + 12, RLENGTH - 13)
@@ -261,7 +264,8 @@ else
 fi
 cat > "$root/etc/luarocks/config-$short.lua" << EOF
 -- LuaRocks configuration of a selever Lua bundle. selever sets
--- LUAROCKS_SYSCONFDIR to <bundle>/etc/luarocks; everything else follows.
+-- LUAROCKS_SYSCONFDIR to <bundle>/etc/luarocks and passes --lua-dir.
+-- Rocks go into the bundle, where its lua looks for modules.
 local bundle = os_getenv("LUAROCKS_SYSCONFDIR")
    :gsub("[/\\\\]+$", ""):gsub("[/\\\\][^/\\\\]+[/\\\\][^/\\\\]+$", "")
 
@@ -277,9 +281,6 @@ variables = {
 $lualib
 }
 EOF
-# The standalone LuaRocks binaries default to the Lua they embed (5.4);
-# this makes them pick the bundle's version and its config file.
-echo "return \"$short\"" > "$root/etc/luarocks/default-lua-version.lua"
 
 # ------------------------------------------------------------------ check
 

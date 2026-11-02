@@ -26,29 +26,27 @@ for archive in "$dist"/lua-*-"$platform".tar.gz; do
   echo "==> $name"
   tar -xzf "$archive" -C "$work"
   bundle=$work/$name
+  # How selever runs LuaRocks.
   export LUAROCKS_SYSCONFDIR
   LUAROCKS_SYSCONFDIR=$(native "$bundle/etc/luarocks")
+  lua_dir=--lua-dir=$(native "$bundle")
   case $platform in
     windows-x64)
       lua=$bundle/bin/lua.exe
-      luarocks=("$bundle/bin/luarocks.exe")
+      luarocks=("$bundle/bin/luarocks.exe" "$lua_dir")
       ;;
     macos-arm64)
       lua=$bundle/bin/lua
-      luarocks=("$lua" "$bundle/bin/luarocks")
+      luarocks=("$lua" "$bundle/bin/luarocks" "$lua_dir")
       ;;
     *)
       lua=$bundle/bin/lua
-      luarocks=("$bundle/bin/luarocks")
+      luarocks=("$bundle/bin/luarocks" "$lua_dir")
       ;;
   esac
-  (
-    # Like a plain Windows shell, not MSYS2: LuaRocks changes its
-    # platform when MSYSTEM is set.
-    unset MSYSTEM
-    "${luarocks[@]}" install lpeg
-    "${luarocks[@]}" install inspect
-  )
+  "${luarocks[@]}" config platforms || true
+  "${luarocks[@]}" install lpeg
+  "${luarocks[@]}" install inspect
   "$lua" -e '
     local lpeg = require("lpeg")
     local inspect = require("inspect")
