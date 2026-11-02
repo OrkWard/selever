@@ -65,6 +65,21 @@ proc dispatcherTarget(dispatcher: string): string =
       extractFilename(dispatcher)
     if fileExists(current):
       return current
+  else:
+    # getAppFilename resolves symlinks, so a Homebrew install yields a
+    # versioned Cellar path that vanishes on upgrade. Prefer the stable PATH
+    # entry that reaches the same binary, e.g. /opt/homebrew/bin/selever.
+    let ownShims = normalizedPath(shimDir())
+    for directory in getEnv("PATH").split(PathSep):
+      if directory.len == 0 or
+          cmpPaths(normalizedPath(directory), ownShims) == 0:
+        continue
+      let candidate = directory / "selever"
+      try:
+        if fileExists(candidate) and sameFile(candidate, dispatcher):
+          return candidate
+      except OSError:
+        discard
   dispatcher
 
 proc ensureShim(command, source: string; alreadyManaged: bool) =
