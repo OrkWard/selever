@@ -87,6 +87,18 @@ suite "installer":
     expect ValueError:
       discard newestZigStyleRelease(index, "0.18")
 
+  test "go latest and prefixes skip unstable releases":
+    let index = parseJson("""
+      [{"version": "go1.28rc1", "stable": false},
+       {"version": "go1.27.3", "stable": true},
+       {"version": "go1.27rc3", "stable": false},
+       {"version": "go1.26.9", "stable": true}]
+    """)
+    check newestGoRelease(index, "latest") == "1.27.3"
+    check newestGoRelease(index, "1.26") == "1.26.9"
+    expect ValueError:
+      discard newestGoRelease(index, "1.28")
+
   test "a package requires exactly one explicit pair":
     expect ValueError:
       discard installAll([

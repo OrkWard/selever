@@ -221,6 +221,7 @@ proc resolveCommand*(command, startDir: string): ResolvedCommand =
 proc runResolved*(resolved: ResolvedCommand,
                   arguments: seq[string]): int =
   when defined(windows):
+    ignoreConsoleInterrupts()
     let process = startProcess(
       resolved.executable,
       args = resolved.arguments & arguments,

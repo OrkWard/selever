@@ -71,6 +71,7 @@ proc runExec(arguments: seq[string]): int =
     else: @[]
   let environment = currentEnvironment()
   execEnvironment(getCurrentDir()).applyTo(environment)
+  ignoreConsoleInterrupts()
   runCommand(
     findCommand(arguments[1], environment.getOrDefault("PATH")),
     commandArguments,

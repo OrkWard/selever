@@ -226,21 +226,26 @@ proc resolveNode(selector: string): string =
       return version
   raise newException(ValueError, "nodejs release not found: " & selector)
 
-proc resolveGo(selector: string): string =
-  if selector.startsWith("go"):
-    raise newException(ValueError,
-      "golang selectors must not use a leading go: " & selector)
-  if selector.isConcreteVersion:
-    return selector
-
-  let index = parseJson(fetchText(GoIndexUrl))
+proc newestGoRelease*(index: JsonNode, selector: string): string =
+  ## The first stable release matching latest or a version prefix. The index
+  ## lists release candidates and betas ahead of the releases they precede.
   for release in index.items:
+    if not release{"stable"}.getBool():
+      continue
     var version = release["version"].getStr()
     if version.startsWith("go"):
       version = version[2 .. ^1]
     if selector == "latest" or version.matchesNumericSelector(selector):
       return version
   raise newException(ValueError, "golang release not found: " & selector)
+
+proc resolveGo(selector: string): string =
+  if selector.startsWith("go"):
+    raise newException(ValueError,
+      "golang selectors must not use a leading go: " & selector)
+  if selector.isConcreteVersion:
+    return selector
+  newestGoRelease(parseJson(fetchText(GoIndexUrl)), selector)
 
 proc normalizedJavaSelector(selector: string): string =
   result = selector

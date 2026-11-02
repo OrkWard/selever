@@ -1,4 +1,4 @@
-import std/[os, osproc, strutils]
+import std/[os, osproc, strutils, tempfiles]
 
 import ./processutil
 
@@ -21,7 +21,18 @@ const CurlArguments = @[
 ]
 
 proc fetchText*(url: string): string =
-  result = captureCommand("curl", CurlArguments & @[url])
+  ## The response body. curl reports its own errors on stderr.
+  let path = genTempPath("selever-fetch-", ".tmp")
+  try:
+    runChecked("curl", CurlArguments & @["--output", path, url])
+    # curl creates no file for an empty body.
+    if fileExists(path):
+      result = readFile(path)
+  except OSError as error:
+    raise newException(OSError, "could not fetch " & url & ": " & error.msg)
+  finally:
+    if fileExists(path):
+      removeFile(path)
 
 proc download*(url, destination: string) =
   if fileExists(destination):
