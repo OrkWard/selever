@@ -166,7 +166,7 @@ proc resolvePackageCommand(command, startDir: string,
 
   let packageDir = packageInstallDir(tool, packageVersion, parentVersion)
   var executable = packageDir / entry.locator
-  if tool.kind == tkLuabin:
+  if tool.kind == tkLuaPackage:
     # bin/<command> links to the rock's Lua script.
     if not fileExists(executable):
       raise newException(ValueError,

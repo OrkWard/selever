@@ -1,4 +1,4 @@
-## How selever runs LuaRocks and luabin commands of a Lua bundle built by
+## How selever runs LuaRocks and luapkg commands of a Lua bundle built by
 ## scripts/build-lua.sh. The bundle's LuaRocks finds its configuration and
 ## Lua from where it runs, so it needs no flags or environment.
 

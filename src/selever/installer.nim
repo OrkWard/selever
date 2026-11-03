@@ -28,7 +28,7 @@ type
   InstallOptions* = object
     mode*: InstallMode
     dryRun*: bool
-    ## Where the tool version files are; luabin builds C modules with the
+    ## Where the tool version files are; luapkg builds C modules with the
     ## C toolchain selected there. Empty means the current directory.
     startDir*: string
 
@@ -571,7 +571,7 @@ proc rockDir(tree, shortVersion, rock: string): string =
       return path
   raise newException(ValueError, rock & " was not installed into " & rocks)
 
-proc installLuabin(tool: ToolId, query, luaVersion: string; force: bool;
+proc installLuaPackage(tool: ToolId, query, luaVersion: string; force: bool;
                    startDir: string): string =
   ## Installs a rock and its dependencies into a tree of their own. bin/
   ## links to the rock's scripts: LuaRocks' own wrappers hold the staging
@@ -745,8 +745,8 @@ proc installAll*(selections: openArray[ToolSelection],
         actual = installNpm(tool, pair.package, parentVersion, refresh)
       of tkGoPackage:
         actual = installGoPackage(tool, pair.package, parentVersion, refresh)
-      of tkLuabin:
-        actual = installLuabin(tool, pair.package, parentVersion, refresh,
+      of tkLuaPackage:
+        actual = installLuaPackage(tool, pair.package, parentVersion, refresh,
           if options.startDir.len > 0: options.startDir else: getCurrentDir())
       else:
         discard

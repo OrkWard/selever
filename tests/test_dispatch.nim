@@ -115,18 +115,18 @@ suite "dispatcher":
     check resolveCommand("lua", root).executable ==
       runtimeExecutable(tool, install)
 
-  test "runs a luabin command with its tree's modules":
+  test "runs a luapkg command with its tree's modules":
     let root = createTempDir("selever-dispatch-", "")
     defer: removeDir(root)
     defer: clearRoots()
     configureRoots(root)
-    writeFile(root / ".tool-versions", "luabin:luacheck 5.4:1.2.0-1\n")
+    writeFile(root / ".tool-versions", "luapkg:luacheck 5.4:1.2.0-1\n")
 
     let luaTool = parseToolId("lua")
     let luaRoot = createRuntime(luaTool, "5.4.8")
     createRuntimeLinks(luaTool, "5.4", "5.4.8")
 
-    let tool = parseToolId("luabin:luacheck")
+    let tool = parseToolId("luapkg:luacheck")
     let packageRoot = packageInstallDir(tool, "1.2.0-1", "5.4.8")
     let script = packageRoot / "lib" / "luarocks" / "rocks-5.4" /
       "luacheck" / "1.2.0-1" / "bin" / "luacheck"
@@ -137,7 +137,7 @@ suite "dispatcher":
       packageRoot / "bin" / "luacheck")
     createPackageLink(tool, "1.2.0-1", "1.2.0-1", "5.4.8")
     createDir(dataRoot())
-    writeFile(nameMapPath(), "luacheck luabin:luacheck bin/luacheck\n")
+    writeFile(nameMapPath(), "luacheck luapkg:luacheck bin/luacheck\n")
 
     let resolved = resolveCommand("luacheck", root)
     check resolved.executable == runtimeExecutable(luaTool, luaRoot)

@@ -14,7 +14,7 @@ type
     tkLua,
     tkNpm,
     tkGoPackage,
-    tkLuabin
+    tkLuaPackage
 
   ToolId* = object
     kind*: ToolKind
@@ -65,8 +65,8 @@ proc parseToolId*(name: string): ToolId =
     elif name.startsWith("gopkg:") and name.len > 6:
       result.kind = tkGoPackage
       result.package = name[6 .. ^1]
-    elif name.startsWith("luabin:") and name.len > 7:
-      result.kind = tkLuabin
+    elif name.startsWith("luapkg:") and name.len > 7:
+      result.kind = tkLuaPackage
       result.package = name[7 .. ^1]
 
 proc parentTool*(tool: ToolId): string =
@@ -75,7 +75,7 @@ proc parentTool*(tool: ToolId): string =
     "nodejs"
   of tkGoPackage:
     "golang"
-  of tkLuabin:
+  of tkLuaPackage:
     "lua"
   else:
     ""
@@ -87,7 +87,7 @@ proc isSupported*(tool: ToolId): bool =
   tool.kind != tkUnknown
 
 proc isPackage*(tool: ToolId): bool =
-  tool.kind in {tkNpm, tkGoPackage, tkLuabin}
+  tool.kind in {tkNpm, tkGoPackage, tkLuaPackage}
 
 proc isCToolchain*(tool: ToolId): bool =
   tool.kind in {tkMsvc, tkGcc, tkLlvmMingw}

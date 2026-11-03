@@ -33,7 +33,7 @@ Supported tools and selectors:
   lua           latest | <version-prefix>, Lua with LuaRocks
   npm:<package> <node-selector>:<package-selector>
   gopkg:<module> <go-selector>:<package-selector>
-  luabin:<rock> <lua-selector>:<rock-version>|latest
+  luapkg:<rock> <lua-selector>:<rock-version>|latest
 
 nodejs, golang, java, zig, zls and lua also accept system and path:<directory>.
 msvc, gcc and llvm-mingw are Windows-only and accept only full names.
