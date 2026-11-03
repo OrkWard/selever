@@ -99,6 +99,33 @@ suite "installer":
     expect ValueError:
       discard newestGoRelease(index, "1.28")
 
+  test "lua latest and prefixes need a bundle for the platform":
+    let index = parseJson("""
+      {"5.5.1": {"luarocks": "3.13.0", "files": {"linux-x86_64": {}}},
+       "5.4.8": {"luarocks": "3.13.0", "files": {"windows-x64": {},
+                                                  "linux-x86_64": {}}},
+       "5.4.7": {"luarocks": "3.13.0", "files": {"windows-x64": {}}}}
+    """)
+    check newestLuaRelease(index, "latest", "linux-x86_64") == "5.5.1"
+    check newestLuaRelease(index, "latest", "windows-x64") == "5.4.8"
+    check newestLuaRelease(index, "5.4", "windows-x64") == "5.4.8"
+    expect ValueError:
+      discard newestLuaRelease(index, "5.5", "windows-x64")
+
+  test "lua bundles are looked up by version and platform":
+    let index = parseJson("""
+      {"5.4.8": {"luarocks": "3.13.0", "files": {"windows-x64":
+        {"url": "https://example.invalid/lua-5.4.8-windows-x64.tar.gz",
+         "sha256": "00"}}}}
+    """)
+    let artifact = luaArtifact(index, "5.4.8", "windows-x64")
+    check artifact.url == "https://example.invalid/lua-5.4.8-windows-x64.tar.gz"
+    check artifact.checksum == "00"
+    expect ValueError:
+      discard luaArtifact(index, "5.4.8", "macos-arm64")
+    expect ValueError:
+      discard luaArtifact(index, "5.1.5", "windows-x64")
+
   test "a package requires exactly one explicit pair":
     expect ValueError:
       discard installAll([

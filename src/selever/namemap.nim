@@ -16,7 +16,8 @@ type
 
 const ReservedCommands = [
   "node", "npm", "npx", "corepack",
-  "go", "gofmt", "zig", "zls", "selever",
+  "go", "gofmt", "zig", "zls", "lua", "luac", "luarocks",
+  "luarocks-admin", "selever",
 ]
 
 proc validCommand(command: string): bool =

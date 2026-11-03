@@ -73,8 +73,10 @@ proc storageName*(tool: ToolId): string =
   of tkMsvc: "msvc"
   of tkGcc: "gcc"
   of tkLlvmMingw: "llvm-mingw"
+  of tkLua: "lua"
   of tkNpm: "npm"
   of tkGoPackage: "gopkg"
+  of tkLuaPackage: "luapkg"
   of tkUnknown: "unknown"
 
 proc runtimeRoot*(tool: ToolId): string =
@@ -134,7 +136,7 @@ proc executableDirs*(tool: ToolId, version: string,
       result = @[root]
     else:
       result = @[root / "bin"]
-  of tkGolang, tkGoPackage, tkNpm:
+  of tkGolang, tkGoPackage, tkNpm, tkLua, tkLuaPackage:
     result = @[root / "bin"]
   of tkJava:
     result = @[root / "bin"]

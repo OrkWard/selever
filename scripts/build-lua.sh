@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Builds a relocatable Lua + LuaRocks bundle for selever.
 #
-#   scripts/build-lua.sh <lua-version> <platform> <luarocks-version> <output-dir>
+#   scripts/build-lua.sh <lua-version> <platform> <luarocks-version> \
+#     <output-dir> [<luarocks-binaries>]
 #
 # Platforms: windows-x64 (MSYS2 UCRT64 gcc), linux-x86_64, macos-arm64.
 # Writes <output-dir>/lua-<version>-<platform>.tar.gz and its .sha256.
+# Windows and Linux bundles take LuaRocks from <luarocks-binaries>/<platform>,
+# built by build-luarocks.sh; macOS bundles run LuaRocks' sources.
 #
 # Bundle layout, under lua-<version>-<platform>/:
 #   bin/                 lua, luac, luarocks, luarocks-admin (and lua5X.dll)
@@ -16,13 +19,15 @@
 #
 # Lua resolves "!" in its default package paths to the directory of the
 # running executable, so modules installed by LuaRocks into the bundle are
-# found without LUA_PATH or LUA_INIT. LuaRocks reads its configuration from
-# LUAROCKS_SYSCONFDIR, which selever sets to <bundle>/etc/luarocks.
+# found without LUA_PATH or LUA_INIT. LuaRocks' hardcoded module
+# (scripts/lua/hardcoded.lua) finds the bundle from where LuaRocks runs, so
+# bin/luarocks works as is and installs rocks into the bundle.
 
 set -euo pipefail
 
-if [ $# -ne 4 ]; then
-  echo "usage: $0 <lua-version> <platform> <luarocks-version> <output-dir>" >&2
+if [ $# -lt 4 ] || [ $# -gt 5 ]; then
+  echo "usage: $0 <lua-version> <platform> <luarocks-version> <output-dir>" \
+    "[<luarocks-binaries>]" >&2
   exit 2
 fi
 
@@ -30,6 +35,7 @@ version=$1
 platform=$2
 luarocks_version=$3
 output=$4
+binaries=${5:-}
 
 here=$(cd "$(dirname "$0")" && pwd)
 short=$(echo "$version" | cut -d. -f1-2)
@@ -54,8 +60,10 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 root=$work/$name
 
+curl_retry=(--retry 5 --retry-all-errors --retry-delay 3)
+
 fetch() {
-  curl -fsSL --retry 3 -o "$2" "$1"
+  curl -fsSL "${curl_retry[@]}" -o "$2" "$1"
 }
 
 sha256() {
@@ -70,18 +78,16 @@ sha256() {
 
 echo "==> Lua $version source"
 archive=lua-$version.tar.gz
-fetch "https://www.lua.org/ftp/$archive" "$work/$archive"
-# lua.org/ftp lists every tarball with its SHA-256 in a following cell.
-expected=$(curl -fsSL --retry 3 https://www.lua.org/ftp/ | awk -v file="$archive" '
-  index($0, "HREF=\"" file "\"") { found = 1 }
-  found && match($0, /CLASS="sum">[0-9a-f]+</) {
-    print substr($0, RSTART + 12, RLENGTH - 13)
-    exit
-  }')
-[ -n "$expected" ] || die "no SHA-256 for $archive on lua.org"
-actual=$(sha256 "$work/$archive")
-[ "$actual" = "$expected" ] || die "SHA-256 mismatch for $archive: $actual != $expected"
-tar -xzf "$work/$archive" -C "$work"
+# LUA_SOURCES holds tarballs fetch-lua.sh verified; otherwise fetch now.
+sources=${LUA_SOURCES:-}
+if [ -z "$sources" ] || [ ! -f "$sources/$archive" ]; then
+  sources=$work/sources
+  bash "$here/fetch-lua.sh" "$sources" "$version"
+fi
+actual=$(sha256 "$sources/$archive")
+[ "$actual" = "$(cat "$sources/$archive.sha256")" ] ||
+  die "SHA-256 mismatch for $archive"
+tar -xzf "$sources/$archive" -C "$work"
 src=$work/lua-$version/src
 
 # ------------------------------------------------------------------ patches
@@ -205,81 +211,49 @@ cp "$work/lua-$version/doc/readme.html" "$root/lua-readme.html" 2> /dev/null || 
 # ------------------------------------------------------------------ luarocks
 
 echo "==> LuaRocks $luarocks_version"
-releases=https://luarocks.github.io/luarocks/releases
 case $platform in
   windows-x64 | linux-x86_64)
-    if [ "$platform" = windows-x64 ]; then
-      zip=luarocks-$luarocks_version-windows-64.zip
-      suffix=.exe
-    else
-      zip=luarocks-$luarocks_version-linux-x86_64.zip
-      suffix=
-    fi
-    fetch "$releases/$zip" "$work/$zip"
-    if command -v unzip > /dev/null; then
-      unzip -q "$work/$zip" -d "$work/luarocks"
-    else
-      python3 -m zipfile -e "$work/$zip" "$work/luarocks"
-    fi
+    [ -n "$binaries" ] || die "$platform needs the LuaRocks binaries directory"
+    if [ "$platform" = windows-x64 ]; then suffix=.exe; else suffix=; fi
     for tool in luarocks luarocks-admin; do
-      found=$(find "$work/luarocks" -type f -name "$tool$suffix" | head -n 1)
-      [ -n "$found" ] || die "$zip has no $tool$suffix"
-      cp "$found" "$root/bin/$tool$suffix"
+      cp "$binaries/$platform/$tool$suffix" "$root/bin/$tool$suffix"
       chmod +x "$root/bin/$tool$suffix"
     done
     ;;
   macos-arm64)
     # No standalone binary for macOS: run LuaRocks' sources with this Lua.
     tarball=luarocks-$luarocks_version.tar.gz
-    fetch "$releases/$tarball" "$work/$tarball"
+    fetch "https://luarocks.github.io/luarocks/releases/$tarball" "$work/$tarball"
     tar -xzf "$work/$tarball" -C "$work"
     lrsrc=$work/luarocks-$luarocks_version/src
     cp -R "$lrsrc/luarocks" "$root/share/lua/$short/"
     if [ "$short" = 5.1 ] && [ -d "$lrsrc/compat53" ]; then
       cp -R "$lrsrc/compat53" "$root/share/lua/$short/"
     fi
+    {
+      echo "local static = {}"
+      cat "$here/lua/hardcoded.lua"
+    } > "$root/share/lua/$short/luarocks/core/hardcoded.lua"
     for tool in luarocks luarocks-admin; do
-      {
-        echo "-- selever: run with the bundle's lua; configuration is in"
-        echo "-- <bundle>/etc/luarocks unless LUAROCKS_SYSCONFDIR says otherwise."
-        echo 'local bundle = arg[0]:gsub("[/\\][^/\\]*$", ""):gsub("[/\\][^/\\]*$", "")'
-        echo 'package.loaded["luarocks.core.hardcoded"] = { SYSCONFDIR = bundle .. "/etc/luarocks" }'
-        tail -n +2 "$lrsrc/bin/$tool"
-      } > "$root/bin/$tool"
+      cp "$lrsrc/bin/$tool" "$root/bin/$tool"
     done
     ;;
 esac
 
 if [ "$platform" = windows-x64 ]; then
-  lualib="   LUALIB = \"$dll\","
-  libdir=bin
-  interpreter=lua.exe
+  lualib="variables.LUALIB = \"$dll\""
 else
   lualib=""
-  libdir=lib
-  interpreter=lua
 fi
 cat > "$root/etc/luarocks/config-$short.lua" << EOF
--- LuaRocks configuration of a selever Lua bundle. selever sets
--- LUAROCKS_SYSCONFDIR to <bundle>/etc/luarocks; everything else follows.
-local bundle = os_getenv("LUAROCKS_SYSCONFDIR")
-   :gsub("[/\\\\]+$", ""):gsub("[/\\\\][^/\\\\]+[/\\\\][^/\\\\]+$", "")
-
+-- LuaRocks configuration of a selever Lua bundle. LuaRocks' hardcoded
+-- module sets variables.LUA_DIR to the bundle. Rocks go into the bundle,
+-- where its lua looks for modules.
 rocks_trees = {
-   { name = "bundle", root = bundle },
+   { name = "bundle", root = variables.LUA_DIR },
 }
-variables = {
-   LUA_DIR = bundle,
-   LUA_BINDIR = bundle .. "/bin",
-   LUA_INCDIR = bundle .. "/include",
-   LUA_LIBDIR = bundle .. "/$libdir",
-   LUA = bundle .. "/bin/$interpreter",
 $lualib
-}
 EOF
-# The standalone LuaRocks binaries default to the Lua they embed (5.4);
-# this makes them pick the bundle's version and its config file.
-echo "return \"$short\"" > "$root/etc/luarocks/default-lua-version.lua"
 
 # ------------------------------------------------------------------ check
 

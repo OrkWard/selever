@@ -20,7 +20,38 @@ permissions:
   contents: read
 
 jobs:
+  prepare:
+    # Lua sources, fetched once: lua.org is not always reachable from the
+    # Windows runners. Standalone LuaRocks for Linux and Windows, built like
+    # LuaRocks' releases but finding their paths in the bundle they run in.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch Lua sources
+        env:
+          LUA_VERSIONS: ${{ inputs.lua_versions }}
+        run: bash scripts/fetch-lua.sh sources $LUA_VERSIONS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sources
+          path: sources/
+          if-no-files-found: error
+      - name: Install build tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq mingw-w64 libssl-dev zlib1g-dev libbz2-dev
+      - name: Build
+        env:
+          LUAROCKS_VERSION: ${{ inputs.luarocks_version }}
+        run: bash scripts/build-luarocks.sh "$LUAROCKS_VERSION" luarocks-bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: luarocks-bin
+          path: luarocks-bin/
+          if-no-files-found: error
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -39,26 +70,44 @@ jobs:
       LUA_VERSIONS: ${{ inputs.lua_versions }}
       LUAROCKS_VERSION: ${{ inputs.luarocks_version }}
       PLATFORM: ${{ matrix.platform }}
+      LUA_SOURCES: sources
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: sources
+          path: sources
+      - uses: actions/download-artifact@v4
+        with:
+          name: luarocks-bin
+          path: luarocks-bin
       - if: matrix.platform == 'windows-x64'
+        id: msys2
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
           update: true
           install: >-
             curl
-            unzip
             mingw-w64-ucrt-x86_64-gcc
       - name: Build
         run: |
           for version in $LUA_VERSIONS; do
-            bash scripts/build-lua.sh "$version" "$PLATFORM" "$LUAROCKS_VERSION" dist
+            bash scripts/build-lua.sh "$version" "$PLATFORM" "$LUAROCKS_VERSION" \
+              dist luarocks-bin
           done
       - name: Test
+        # Git Bash on Windows: a plain environment, not MSYS2's, in which
+        # LuaRocks would switch to its MSYS2 platform.
+        shell: bash
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          # What selever exec sets for a gcc toolchain.
-          if [ "$PLATFORM" = windows-x64 ]; then export CC=gcc; fi
+          if [ "$PLATFORM" = windows-x64 ]; then
+            # The compiler on PATH and in CC, as selever exec gives it.
+            PATH=$(cygpath -u "$MSYS2_LOCATION")/ucrt64/bin:$PATH
+            export CC=gcc
+          fi
           bash scripts/test-lua.sh dist "$PLATFORM"
       - uses: actions/upload-artifact@v4
         with:
@@ -76,6 +125,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: lua-*
           merge-multiple: true
       - name: Index entries
         working-directory: dist

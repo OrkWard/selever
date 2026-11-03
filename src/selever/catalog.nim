@@ -11,8 +11,10 @@ type
     tkMsvc,
     tkGcc,
     tkLlvmMingw,
+    tkLua,
     tkNpm,
-    tkGoPackage
+    tkGoPackage,
+    tkLuaPackage
 
   ToolId* = object
     kind*: ToolKind
@@ -54,6 +56,8 @@ proc parseToolId*(name: string): ToolId =
     result.kind = tkGcc
   of "llvm-mingw":
     result.kind = tkLlvmMingw
+  of "lua":
+    result.kind = tkLua
   else:
     if name.startsWith("npm:") and name.len > 4:
       result.kind = tkNpm
@@ -61,6 +65,9 @@ proc parseToolId*(name: string): ToolId =
     elif name.startsWith("gopkg:") and name.len > 6:
       result.kind = tkGoPackage
       result.package = name[6 .. ^1]
+    elif name.startsWith("luapkg:") and name.len > 7:
+      result.kind = tkLuaPackage
+      result.package = name[7 .. ^1]
 
 proc parentTool*(tool: ToolId): string =
   case tool.kind
@@ -68,6 +75,8 @@ proc parentTool*(tool: ToolId): string =
     "nodejs"
   of tkGoPackage:
     "golang"
+  of tkLuaPackage:
+    "lua"
   else:
     ""
 
@@ -78,13 +87,14 @@ proc isSupported*(tool: ToolId): bool =
   tool.kind != tkUnknown
 
 proc isPackage*(tool: ToolId): bool =
-  tool.kind in {tkNpm, tkGoPackage}
+  tool.kind in {tkNpm, tkGoPackage, tkLuaPackage}
 
 proc isCToolchain*(tool: ToolId): bool =
   tool.kind in {tkMsvc, tkGcc, tkLlvmMingw}
 
 proc isRuntime*(tool: ToolId): bool =
-  tool.kind in {tkNodejs, tkGolang, tkJava, tkZig, tkZls} or tool.isCToolchain
+  tool.kind in {tkNodejs, tkGolang, tkJava, tkZig, tkZls, tkLua} or
+    tool.isCToolchain
 
 proc parseMsvcSelector*(selector: string): MsvcSelector =
   ## <toolset>[-<target>], e.g. 14.44 or 14.44-arm64; no target means native.
@@ -110,6 +120,13 @@ proc storedSelector*(tool: ToolId, selector: string): string =
   ## The install directory name a selector refers to.
   if tool.kind == tkMsvc: parseMsvcSelector(selector).toolset
   else: selector
+
+proc luaShortVersion*(version: string): string =
+  ## The <major>.<minor> Lua names its module directories after: 5.4.8 -> 5.4.
+  let parts = version.split('.')
+  if parts.len < 2:
+    raise newException(ValueError, "invalid Lua version: " & version)
+  parts[0] & "." & parts[1]
 
 proc parsePackagePair*(value: string): PackagePair =
   let separator = value.find(':')
