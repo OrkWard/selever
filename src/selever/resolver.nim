@@ -104,6 +104,10 @@ proc resolveRuntimeLocal*(tool: ToolId, selector: string): string =
     result = tool.storedSelector(selector)
   if result.len > 0 and not runtimeComplete(tool, result):
     result.setLen(0)
+  # The toolset alone is not enough when the selector asks for components.
+  if result.len > 0 and tool.kind == tkMsvc and not msvcComplete(
+      runtimeInstallDir(tool, result), parseMsvcSelector(selector)):
+    result.setLen(0)
 
 proc resolvePackageLocal*(tool: ToolId, selector,
                           parentVersion: string): string =

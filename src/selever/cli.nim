@@ -27,7 +27,8 @@ Supported tools and selectors:
   java          latest | lts | <feature>[.<minor>[.<security>[.<patch>]]][+<build>]
   zig           latest | <version-prefix>
   zls           latest | <version-prefix>
-  msvc          <toolset>[-x64|-x86|-arm64], e.g. 14.44 or 14.44-arm64
+  msvc          <toolset>[-x64|-x86|-arm64][+<option>...], e.g. 14.44,
+                14.44-arm64 or 14.44+mfc+sdk=26100
   gcc           <winlibs release tag>, e.g. 16.2.0posix-14.0.0-ucrt-r1
   llvm-mingw    <llvm-mingw release tag>, e.g. 20261020
   npm:<package> <node-selector>:<package-selector>
@@ -35,6 +36,9 @@ Supported tools and selectors:
 
 nodejs, golang, java, zig and zls also accept system and path:<directory>.
 msvc, gcc and llvm-mingw are Windows-only and accept only full names.
+msvc options: atl, mfc (with ATL), mbcs (MFC multibyte libraries, with MFC)
+and sdk=<build> (Windows SDK, default the one Visual Studio recommends).
+Install adds missing options to an installed toolset; exec requires them.
 Version prefixes select the latest matching release; exact versions are immutable.
 Package selectors are passed unchanged to npm or go install.
 Install reuses complete local selectors. Update refreshes mutable selectors.

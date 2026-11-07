@@ -112,9 +112,48 @@ proc msvcComponent(manifest: VsManifest, toolset, host: string): string =
     raise newException(ValueError,
       "MSVC toolset " & toolset & " is not in the Visual Studio manifest")
 
-proc msvcPayloads(manifest: VsManifest, component, host: string): seq[VsPayload] =
+proc packagePayloads(manifest: VsManifest, component: string,
+                     required, optional: openArray[string]): seq[VsPayload] =
+  var seen: seq[string]
+  for id in @required & @optional:
+    let package = manifest.lookup(id)
+    if package.isNil:
+      if id in required:
+        raise newException(ValueError,
+          "MSVC " & component & " is missing package " & id)
+      continue
+    for payload in package.payloads:
+      if payload.sha256 notin seen:
+        seen.add payload.sha256
+        result.add payload
+
+proc atlmfcPackages(component: string, request: MsvcSelector): seq[string] =
+  ## ATL and MFC for every target, Spectre variants excluded. MFC's redist
+  ## also holds the debug DLLs that /MDd programs load.
   let prefix = "microsoft.vc." & component & "."
-  var required = @[prefix & "crt.headers.base"]
+  if request.atl:
+    result.add prefix & "atl.headers.base"
+  if request.mfc:
+    result.add prefix & "mfc.headers.base"
+  for target in MsvcTargets:
+    if request.atl:
+      result.add prefix & "atl." & target & ".base"
+    if request.mfc:
+      result.add [
+        prefix & "mfc." & target & ".base",
+        prefix & "mfc." & target & ".debug.base",
+        prefix & "mfc.redist." & target & ".base",
+      ]
+    if request.mbcs:
+      # The x86 MBCS packages carry no architecture.
+      let mbcs = prefix & "mfc.mbcs" & (if target == "x86": "" else: "." & target)
+      result.add [mbcs & ".base", mbcs & ".debug.base"]
+
+proc msvcPayloads(manifest: VsManifest, component, host: string,
+                  request: MsvcSelector): seq[VsPayload] =
+  let prefix = "microsoft.vc." & component & "."
+  var required = @[prefix & "crt.headers.base"] &
+    atlmfcPackages(component, request)
   var optional = @[prefix & "asan.headers.base", prefix & "pgo.headers.base"]
   for target in MsvcTargets:
     let tools = "tools.host" & host & ".target" & target
@@ -131,18 +170,7 @@ proc msvcPayloads(manifest: VsManifest, component, host: string): seq[VsPayload]
       prefix & "asan." & target & ".base",
       prefix & "crt.redist." & target & ".base",
     ]
-  var seen: seq[string]
-  for id in required & optional:
-    let package = manifest.lookup(id)
-    if package.isNil:
-      if id in required:
-        raise newException(ValueError,
-          "MSVC " & component & " is missing package " & id)
-      continue
-    for payload in package.payloads:
-      if payload.sha256 notin seen:
-        seen.add payload.sha256
-        result.add payload
+  packagePayloads(manifest, component, required, optional)
 
 proc decodeNames(root: string) =
   ## VSIX entries are URL-encoded and tar keeps them literally. Renames
@@ -169,6 +197,22 @@ proc msvcComplete*(root: string): bool =
   let native = nativeArchitecture()
   fileExists(root / WindowsSdkRecord) and
     msvcToolsDir(root, native, native).len > 0
+
+proc atlmfcMarkers(tools: string, request: MsvcSelector): seq[string] =
+  ## Files that show the requested ATL and MFC libraries are in place.
+  let atlmfc = tools / "atlmfc"
+  if request.atl:
+    result.add atlmfc / "include" / "atlbase.h"
+  if request.mfc:
+    result.add atlmfc / "include" / "afx.h"
+  for target in MsvcTargets:
+    let lib = atlmfc / "lib" / target
+    if request.atl:
+      result.add lib / "atls.lib"
+    if request.mfc:
+      result.add [lib / "mfc140u.lib", lib / "mfc140ud.lib"]
+    if request.mbcs:
+      result.add [lib / "mfc140.lib", lib / "mfc140d.lib"]
 
 # ---------------------------------------------------------------- Windows SDK
 
@@ -265,6 +309,19 @@ proc windowsSdkVersion*(root: string): string =
         (result.len == 0 or path.extractFilename.isNewer(result.extractFilename)):
       result = path.extractFilename
 
+proc msvcComplete*(root: string, request: MsvcSelector): bool =
+  ## The toolset plus the optional components the selector asks for.
+  if not msvcComplete(root):
+    return false
+  if request.sdk.len > 0 and
+      windowsSdkVersion(windowsSdkInstallDir(request.sdk)).len == 0:
+    return false
+  let native = nativeArchitecture()
+  for marker in atlmfcMarkers(msvcToolsDir(root, native, native), request):
+    if not fileExists(marker):
+      return false
+  true
+
 proc installWindowsSdk(manifest: VsManifest, build: string) =
   let root = windowsSdkInstallDir(build)
   if windowsSdkVersion(root).len > 0:
@@ -315,29 +372,92 @@ proc installWindowsSdk(manifest: VsManifest, build: string) =
 
 # ---------------------------------------------------------------- install
 
-proc installMsvc*(toolset: string): string =
-  result = runtimeInstallDir(parseToolId("msvc"), toolset)
-  if msvcComplete(result):
+proc extractVsix(payloads: openArray[VsPayload], staging: string): string =
+  ## Unpacks VSIX payloads into staging and returns their Contents directory.
+  for archive in downloadPayloads(payloads):
+    runChecked("tar", ["-xf", archive, "-C", staging])
+  result = staging / "Contents"
+  decodeNames(result)
+
+proc atlmfcMarkersIn(root: string, request: MsvcSelector): seq[string] =
+  ## The ATL/MFC markers relative to an MSVC tree.
+  let native = nativeArchitecture()
+  for marker in atlmfcMarkers(msvcToolsDir(root, native, native), request):
+    result.add relativePath(marker, root)
+
+proc checkAtlmfc(contents, component: string, markers: openArray[string]) =
+  for marker in markers:
+    if not fileExists(contents / marker):
+      raise newException(ValueError,
+        "MSVC " & component & " did not contain " & marker)
+
+proc addAtlmfc(root: string, manifest: VsManifest, component: string,
+               request: MsvcSelector) =
+  ## Merges ATL and MFC into an installed toolset. The markers move last, so
+  ## an interrupted merge does not count as installed.
+  let markers = atlmfcMarkersIn(root, request)
+  var missing = false
+  for marker in markers:
+    if not fileExists(root / marker):
+      missing = true
+  if not missing:
+    return
+  let payloads = packagePayloads(manifest, component,
+    atlmfcPackages(component, request), [])
+  let staging = root & ".staging"
+  removeDir(staging)
+  createDir(staging)
+  try:
+    let contents = extractVsix(payloads, staging)
+    checkAtlmfc(contents, component, markers)
+    var deferred: seq[string]
+    for path in walkDirRec(contents, relative = true):
+      var isMarker = false
+      for marker in markers:
+        if cmpPaths(marker, path) == 0:
+          isMarker = true
+      if isMarker:
+        deferred.add path
+        continue
+      createDir(parentDir(root / path))
+      moveFile(contents / path, root / path)
+    for path in deferred:
+      createDir(parentDir(root / path))
+      moveFile(contents / path, root / path)
+  finally:
+    removeDir(staging)
+
+proc installMsvc*(selector: string): string =
+  ## Installs the toolset, or adds the selector's optional components to an
+  ## installed one.
+  let request = parseMsvcSelector(selector)
+  result = runtimeInstallDir(parseToolId("msvc"), request.toolset)
+  if msvcComplete(result, request):
     return
   var lock = acquireInstallLock(result & ".lock")
   defer: lock.release()
-  if msvcComplete(result):
+  if msvcComplete(result, request):
     return
 
   let manifest = loadVsManifest()
   let host = nativeArchitecture()
-  let component = msvcComponent(manifest, toolset, host)
-  let sdkBuild = defaultWindowsSdk(manifest)
+  let component = msvcComponent(manifest, request.toolset, host)
+  if request.sdk.len > 0:
+    installWindowsSdk(manifest, request.sdk)
+  if msvcComplete(result):
+    addAtlmfc(result, manifest, component, request)
+    return
+  let sdkBuild =
+    if request.sdk.len > 0: request.sdk
+    else: defaultWindowsSdk(manifest)
   installWindowsSdk(manifest, sdkBuild)
 
   let staging = result & ".staging"
   removeDir(staging)
   createDir(staging)
   try:
-    for archive in downloadPayloads(msvcPayloads(manifest, component, host)):
-      runChecked("tar", ["-xf", archive, "-C", staging])
-    let contents = staging / "Contents"
-    decodeNames(contents)
+    let contents = extractVsix(
+      msvcPayloads(manifest, component, host, request), staging)
     # cl.exe starts vctip.exe to send telemetry; it outlives the build and
     # locks the toolset's files. cl works without it.
     for path in walkDirRec(contents / "VC" / "Tools" / "MSVC"):
@@ -346,6 +466,7 @@ proc installMsvc*(toolset: string): string =
     if msvcToolsDir(contents, host, host).len == 0:
       raise newException(ValueError,
         "MSVC " & component & " did not contain cl.exe")
+    checkAtlmfc(contents, component, atlmfcMarkersIn(contents, request))
     writeFile(contents / WindowsSdkRecord, sdkBuild & "\n")
     removeDir(result)
     createDir(parentDir(result))
@@ -355,14 +476,17 @@ proc installMsvc*(toolset: string): string =
 
 # ---------------------------------------------------------------- environment
 
-proc msvcEnvironment*(root, target: string): EnvironmentChanges =
-  ## What vcvarsall sets for a native host and the given target.
+proc msvcEnvironment*(root: string, request: MsvcSelector): EnvironmentChanges =
+  ## What vcvarsall sets for a native host and the selector's target.
   let host = nativeArchitecture()
+  let target = request.target
   let tools = msvcToolsDir(root, host, target)
   if tools.len == 0:
     raise newException(ValueError,
       "msvc in " & root & " has no compiler for target " & target)
-  let sdkBuild = readFile(root / WindowsSdkRecord).strip()
+  let sdkBuild =
+    if request.sdk.len > 0: request.sdk
+    else: readFile(root / WindowsSdkRecord).strip()
   let sdkRoot = windowsSdkInstallDir(sdkBuild)
   let sdkVersion = windowsSdkVersion(sdkRoot)
   if sdkVersion.len == 0:
@@ -383,8 +507,13 @@ proc msvcEnvironment*(root, target: string): EnvironmentChanges =
     for crt in walkDirs(redist / "debug_nonredist" / target / "*"):
       result.prepend("PATH", crt)
   result.prepend("INCLUDE", tools / "include")
+  if request.atl:
+    result.prepend("INCLUDE", tools / "atlmfc" / "include")
   for part in ["ucrt", "shared", "um", "winrt", "cppwinrt"]:
     result.prepend("INCLUDE", sdkInclude / part)
+  if request.atl:
+    result.prepend("LIB", tools / "atlmfc" / "lib" / target)
+    result.prepend("LIBPATH", tools / "atlmfc" / "lib" / target)
   result.prepend("LIB", tools / "lib" / target, sdkLib / "ucrt" / target,
     sdkLib / "um" / target)
   result.prepend("LIBPATH", tools / "lib" / target)
