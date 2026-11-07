@@ -53,6 +53,21 @@ suite "exec environment":
       expect ValueError:
         discard parseMsvcSelector(invalid)
 
+  test "msvc selectors carry optional components":
+    let plain = parseMsvcSelector("14.44-arm64")
+    check not plain.atl and not plain.mfc and plain.sdk == ""
+    let mfc = parseMsvcSelector("14.44-arm64+mfc+sdk=26100")
+    check mfc.toolset == "14.44"
+    check mfc.target == "arm64"
+    check mfc.atl and mfc.mfc and not mfc.mbcs
+    check mfc.sdk == "26100"
+    check parseMsvcSelector("14.44+mbcs").atl
+    check storedSelector(parseToolId("msvc"), "14.44+atl") == "14.44"
+    for invalid in ["14.44+", "14.44+foo", "14.44+sdk=", "14.44+sdk=10.0",
+                    "14.44+atl-x64"]:
+      expect ValueError:
+        discard parseMsvcSelector(invalid)
+
   test "the JDK is exposed through JAVA_HOME and PATH":
     let root = createTempDir("selever-exec-java-", "")
     defer: removeDir(root)
@@ -106,6 +121,32 @@ suite "exec environment":
     check changes.variables["VCToolsVersion"] == "14.44.35207"
     check changes.prepends["PATH"][0] == hostBin / "arm64"
     check changes.prepends["LIB"][0] == tools / "lib" / "arm64"
+
+  test "msvc options must be installed":
+    let root = createTempDir("selever-exec-msvc-", "")
+    defer: removeDir(root)
+    defer: clearRoots()
+    configureRoots(root)
+    writeFile(root / ".tool-versions", "msvc 14.44+atl\n")
+    let tool = parseToolId("msvc")
+    let install = createMsvc("14.44", [nativeArchitecture()])
+    check resolveRuntimeLocal(tool, "14.44") == "14.44"
+    check resolveRuntimeLocal(tool, "14.44+atl") == ""
+    check resolveRuntimeLocal(tool, "14.44+sdk=22621") == ""
+    expect ValueError:
+      discard execEnvironment(root)
+
+    let atlmfc = install / "VC" / "Tools" / "MSVC" / "14.44.35207" / "atlmfc"
+    createDir(atlmfc / "include")
+    writeFile(atlmfc / "include" / "atlbase.h", "")
+    for target in MsvcTargets:
+      createDir(atlmfc / "lib" / target)
+      writeFile(atlmfc / "lib" / target / "atls.lib", "")
+    check resolveRuntimeLocal(tool, "14.44+atl") == "14.44"
+    check resolveRuntimeLocal(tool, "14.44+mfc") == ""
+    let changes = execEnvironment(root)
+    check changes.prepends["INCLUDE"][1] == atlmfc / "include"
+    check changes.prepends["LIB"][0] == atlmfc / "lib" / nativeArchitecture()
 
   test "a missing msvc target is an error":
     let root = createTempDir("selever-exec-msvc-", "")

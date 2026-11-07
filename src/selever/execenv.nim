@@ -60,7 +60,7 @@ proc toolchainEnvironment(tool: ToolId,
     let root = runtimeInstallDir(tool, concrete)
     case tool.kind
     of tkMsvc:
-      return msvcEnvironment(root, parseMsvcSelector(selector).target)
+      return msvcEnvironment(root, parseMsvcSelector(selector))
     of tkGcc:
       return compilerEnvironment(root, "gcc", "g++")
     of tkLlvmMingw:

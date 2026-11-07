@@ -322,7 +322,7 @@ proc installLlvmMingw(tag: string): string =
   result = installArchive(tool, tag, asset.url, asset.name, asset.checksum,
     stripTopDir = true)
 
-proc installRuntime(tool: ToolId, version: string): string =
+proc installRuntime(tool: ToolId, version, selector: string): string =
   if tool.isCToolchain and not defined(windows):
     raise newException(ValueError, tool.name & " is only supported on Windows")
   case tool.kind
@@ -331,7 +331,8 @@ proc installRuntime(tool: ToolId, version: string): string =
   of tkJava: installJava(version)
   of tkZig: installZigStyle("zig", version, ZigIndexUrl, stripTopDir = true)
   of tkZls: installZigStyle("zls", version, ZlsIndexUrl, stripTopDir = false)
-  of tkMsvc: installMsvc(version)
+  # msvc options (ATL, MFC, SDK) live in the selector, not the version.
+  of tkMsvc: installMsvc(selector)
   of tkGcc: installGcc(version)
   of tkLlvmMingw: installLlvmMingw(version)
   else: raise newException(ValueError, "not a runtime: " & tool.name)
@@ -558,7 +559,7 @@ proc ensureRuntime(tool: ToolId, selector: string, options: InstallOptions,
     report(if options.dryRun: "would-" & action else: action,
       tool.name, selector, result)
     if not options.dryRun:
-      discard installRuntime(tool, result)
+      discard installRuntime(tool, result, selector)
       if not tool.isCToolchain:
         var selectorLock = acquireInstallLock(
           runtimeRoot(tool) / ".selectors.lock")

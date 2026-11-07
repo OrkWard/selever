@@ -26,6 +26,10 @@ type
   MsvcSelector* = object
     toolset*: string
     target*: string
+    atl*: bool
+    mfc*: bool
+    mbcs*: bool
+    sdk*: string  ## Windows SDK build, e.g. 26100; empty for the default.
 
 const MsvcTargets* = ["x64", "x86", "arm64"]
 
@@ -87,24 +91,47 @@ proc isRuntime*(tool: ToolId): bool =
   tool.kind in {tkNodejs, tkGolang, tkJava, tkZig, tkZls} or tool.isCToolchain
 
 proc parseMsvcSelector*(selector: string): MsvcSelector =
-  ## <toolset>[-<target>], e.g. 14.44 or 14.44-arm64; no target means native.
-  let separator = selector.find('-')
+  ## <toolset>[-<target>][+<option>...], e.g. 14.44, 14.44-arm64 or
+  ## 14.44+mfc+sdk=26100; no target means native. Options: atl, mfc (with
+  ## ATL), mbcs (MFC's multibyte libraries, with MFC) and sdk=<build>.
+  let options = selector.split('+')
+  let base = options[0]
+  let separator = base.find('-')
   if separator < 0:
-    result.toolset = selector
+    result.toolset = base
     result.target = nativeArchitecture()
   else:
-    result.toolset = selector[0 ..< separator]
-    result.target = selector[separator + 1 .. ^1]
+    result.toolset = base[0 ..< separator]
+    result.target = base[separator + 1 .. ^1]
   let parts = result.toolset.split('.')
   if parts.len != 2 or parts[0].len == 0 or parts[1].len == 0 or
       not result.toolset.allCharsInSet({'0' .. '9', '.'}):
     raise newException(ValueError,
-      "msvc expects <toolset>[-<target>] such as 14.44 or 14.44-arm64, got " &
-      selector)
+      "msvc expects <toolset>[-<target>][+<option>...] such as 14.44, " &
+      "14.44-arm64 or 14.44+mfc, got " & selector)
   if result.target notin MsvcTargets:
     raise newException(ValueError,
       "msvc target must be one of " & MsvcTargets.join(", ") & ", got " &
       result.target)
+  for option in options[1 .. ^1]:
+    case option
+    of "atl":
+      result.atl = true
+    of "mfc":
+      result.atl = true
+      result.mfc = true
+    of "mbcs":
+      result.atl = true
+      result.mfc = true
+      result.mbcs = true
+    else:
+      if option.startsWith("sdk=") and option.len > 4 and
+          option[4 .. ^1].allCharsInSet(Digits):
+        result.sdk = option[4 .. ^1]
+      else:
+        raise newException(ValueError,
+          "msvc options are atl, mfc, mbcs and sdk=<build>, got " & option &
+          " in " & selector)
 
 proc storedSelector*(tool: ToolId, selector: string): string =
   ## The install directory name a selector refers to.
